@@ -454,168 +454,19 @@ namespace tuplex {
         vector<IExecutorTask*> tasks;
         assert(tstage);
 
-        size_t readBufferSize = options.READ_BUFFER_SIZE();
-        bool normalCaseEnabled = options.OPT_NULLVALUE_OPTIMIZATION(); // this is important so exceptions get upgraded to internal ones
-
-        // use normal case schemas here
-        auto inputSchema = tstage->normalCaseInputSchema();
-        auto inputRowType = inputSchema.getRowType();
-        auto outputSchema = tstage->normalCaseOutputSchema();
-
-        // check what type of input the pipeline has (memory or files)
-        if(tstage->fileInputMode()) {
-            // files
-            // input is multiple files, use split file strategy here.
-            // and issue tasks to executor workqueue!
-
-            assert(tstage->inputMode() == EndPointMode::FILE);
-
-            // split input files into multiple tasks
-            // => for now simply one task per file
-            auto fileSchema = Schema(Schema::MemoryLayout::ROW, python::Type::makeTupleType({python::Type::STRING, python::Type::I64}));
-
-            std::vector<std::string> header;
-            // fetch from first FileInputOperator number of input columns (BEFORE optimization/projection pushdown!)
-            size_t numColumns = tstage->csvNumFileInputColumns();
-
-
-            // CSV, set header
-            if(tstage->csvHasHeader()) {
-                // because of projection pushdown, need to decode from input params!
-                header = tstage->csvHeader();
-            }
-
-
-            // other CSV params
-            char delimiter = tstage->csvInputDelimiter();
-            char quotechar = tstage->csvInputQuotechar();
-
-            vector<bool>  colsToKeep = tstage->columnsToKeep(); // after projection pushdown, what to keep
-
-            for(auto partition : tstage->inputPartitions()) {
-                // get num
-                auto numFiles = partition->getNumRows();
-                const uint8_t* ptr = partition->lock();
-                size_t bytesRead = 0;
-                // found
-                for(int i = 0; i < numFiles; ++i) {
-                    // found file -> create task / split into multiple tasks
-                    Row row = Row::fromMemory(fileSchema, ptr, partition->capacity() - bytesRead);
-                    URI uri(row.getString(0));
-                    size_t file_size = row.getInt(1);
-
-                    // split files if splitsize != 0
-                    if(options.INPUT_SPLIT_SIZE() == 0) {
-                        // one task per URI
-                        auto task = new TransformTask();
-                        task->setFunctor(functor);
-                        task->setInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
-                                                 !options.OPT_GENERATE_PARSER(),
-                                                 numColumns, 0, 0, delimiter, quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
-                        // hash table or memory output?
-                        if(tstage->outputMode() == EndPointMode::HASHTABLE) {
-                            if (tstage->hashtableKeyByteWidth() == 8)
-                                task->sinkOutputToHashTable(HashTableFormat::UINT64,
-                                                            tstage->outputDataSetID());
-                            else
-                                task->sinkOutputToHashTable(HashTableFormat::BYTES,
-                                                            tstage->outputDataSetID());
-                        }
-                        else {
-                            assert(tstage->outputMode() == EndPointMode::FILE ||
-                            tstage->outputMode() == EndPointMode::MEMORY);
-                            task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
-                        }
-
-                        task->sinkExceptionsToMemory(inputSchema);
-                        task->setStageID(tstage->getID());
-                        // add to tasks
-                        tasks.emplace_back(std::move(task));
-                    } else {
-                        // split files according to split size
-                        size_t s = 0;
-                        size_t splitSize = options.INPUT_SPLIT_SIZE();
-                        int num_parts = 0;
-
-                        // two options: 1.) file is larger than split size => split 2.) one task for fiel_size <= split size
-                        if(file_size <= splitSize) {
-                            // 1 task (range 0,0 to indicate full file)
-                            auto task = new TransformTask();
-                            task->setFunctor(functor);
-                            task->setInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
-                                                     !options.OPT_GENERATE_PARSER(),
-                                                     numColumns, 0, 0, delimiter,
-                                                     quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
-                            // hash table or memory output?
-                            if(tstage->outputMode() == EndPointMode::HASHTABLE) {
-                                if (tstage->hashtableKeyByteWidth() == 8)
-                                    task->sinkOutputToHashTable(HashTableFormat::UINT64,
-                                                                tstage->outputDataSetID());
-                                else
-                                    task->sinkOutputToHashTable(HashTableFormat::BYTES,
-                                                                tstage->outputDataSetID());
-                            }
-                            else {
-                                assert(tstage->outputMode() == EndPointMode::FILE ||
-                                       tstage->outputMode() == EndPointMode::MEMORY);
-                                task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
-                            }
-                            task->sinkExceptionsToMemory(inputSchema);
-                            task->setStageID(tstage->getID());
-                            // add to tasks
-                            tasks.emplace_back(std::move(task));
-                            num_parts++;
-                        } else {
-                            // split into multiple tasks
-                            while(s + splitSize <= file_size) {
-
-                                auto rangeStart = s;
-                                auto rangeEnd = std::min(s + splitSize, file_size);
-
-                                // last task should go to file end, i.e. modify accordingly
-                                if(file_size - rangeEnd < splitSize)
-                                    rangeEnd = file_size;
-
-                                auto task = new TransformTask();
-                                task->setFunctor(functor);
-                                task->setInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
-                                                         !options.OPT_GENERATE_PARSER(),
-                                                         numColumns, rangeStart, rangeEnd - rangeStart, delimiter,
-                                                         quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
-                                // hash table or memory output?
-                                if(tstage->outputMode() == EndPointMode::HASHTABLE) {
-                                    if (tstage->hashtableKeyByteWidth() == 8)
-                                        task->sinkOutputToHashTable(HashTableFormat::UINT64,
-                                                                    tstage->outputDataSetID());
-                                    else
-                                        task->sinkOutputToHashTable(HashTableFormat::BYTES,
-                                                                    tstage->outputDataSetID());
-                                }
-                                else {
-                                    assert(tstage->outputMode() == EndPointMode::FILE ||
-                                           tstage->outputMode() == EndPointMode::MEMORY);
-                                    task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
-                                }
-                                task->sinkExceptionsToMemory(inputSchema);
-                                task->setStageID(tstage->getID());
-                                // add to tasks
-                                tasks.emplace_back(std::move(task));
-
-                                s += splitSize;
-                                num_parts++;
-                            }
-                        }
-
-                        stringstream ss;
-                        ss<<"split "<<uri.toPath()<<" into "<<pluralize(num_parts, "task");
-                        logger().info(ss.str());
-                    }
-
-                    ptr += row.serializedLength();
-                    bytesRead += row.serializedLength();
+        if (tstage->fileInputMode()) {
+            switch (tstage->inputFormat()) {
+                case FileFormat::OUTFMT_TEXT:
+                case FileFormat::OUTFMT_CSV: {
+                     loadPlaintextTasks(tstage, tasks, options, functor);
+                     break;
                 }
-
-                partition->unlock();
+                case FileFormat::OUTFMT_ORC: {
+                    loadOrcTasks(tstage, tasks, options, functor);
+                    break;
+                }
+                default:
+                    throw std::runtime_error("File format unsupported for input");
             }
         } else {
             // memory
@@ -623,7 +474,8 @@ namespace tuplex {
             // input are memory partitions
             // --> issue for each memory partition a transform task and put it into local workqueue
             assert(tstage->inputMode() == EndPointMode::MEMORY);
-
+            auto inputSchema = tstage->normalCaseInputSchema();
+            auto outputSchema = tstage->normalCaseOutputSchema();
 
             // restrict after input limit
             size_t numInputRows = 0;
@@ -659,6 +511,247 @@ namespace tuplex {
         }
 
         return tasks;
+    }
+
+    void LocalBackend::loadOrcTasks(tuplex::TransformStage *tstage, std::vector<IExecutorTask*> &tasks,
+                                    const tuplex::ContextOptions &options, tuplex::codegen::read_block_f functor) {
+        using namespace std;
+        assert(tstage->inputMode() == EndPointMode::FILE);
+
+        auto inputSchema = tstage->normalCaseInputSchema();
+        auto inputRowType = inputSchema.getRowType();
+        auto outputSchema = tstage->normalCaseOutputSchema();
+
+        auto fileSchema = Schema(Schema::MemoryLayout::ROW, python::Type::makeTupleType({python::Type::STRING, python::Type::I64}));
+
+        size_t numColumns = tstage->csvNumFileInputColumns();
+
+        for (auto partition : tstage->inputPartitions()) {
+            auto numFiles = partition->getNumRows();
+            const uint8_t* ptr = partition->lock();
+            size_t bytesRead = 0;
+
+            for(int i = 0; i < numFiles; ++i) {
+                Row row = Row::fromMemory(fileSchema, ptr, partition->capacity() - bytesRead);
+                URI uri(row.getString(0));
+                auto numStripes = tstage->orcNumStripes();
+                auto splitSize = options.ORC_SPLIT_SIZE();
+
+                if (splitSize <= numStripes) {
+                    auto task = new TransformTask();
+                    task->setFunctor(functor);
+                    task->setOrcInputFileSource(uri, tstage->fileInputOperatorID(), inputRowType, options.PARTITION_SIZE(), 0, 0);
+                    // hash table or memory output?
+                    if(tstage->outputMode() == EndPointMode::HASHTABLE) {
+                        if (tstage->hashtableKeyByteWidth() == 8)
+                            task->sinkOutputToHashTable(HashTableFormat::UINT64,
+                                                        tstage->outputDataSetID());
+                        else
+                            task->sinkOutputToHashTable(HashTableFormat::BYTES,
+                                                        tstage->outputDataSetID());
+                    }
+                    else {
+                        assert(tstage->outputMode() == EndPointMode::FILE ||
+                               tstage->outputMode() == EndPointMode::MEMORY);
+                        task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
+                    }
+
+                    task->sinkExceptionsToMemory(inputSchema);
+                    task->setStageID(tstage->getID());
+                    // add to tasks
+                    tasks.emplace_back(std::move(task));
+                } else {
+                    for (int i = 0; i <= numStripes; i += splitSize) {
+                        auto rangeStart = i;
+                        auto rangeEnd = std::min(i + splitSize, numStripes);
+
+                        auto task = new TransformTask();
+                        task->setFunctor(functor);
+                        task->setOrcInputFileSource(uri, tstage->fileInputOperatorID(), inputRowType, options.PARTITION_SIZE(), rangeStart, rangeEnd);
+                        // hash table or memory output?
+                        if(tstage->outputMode() == EndPointMode::HASHTABLE) {
+                            if (tstage->hashtableKeyByteWidth() == 8)
+                                task->sinkOutputToHashTable(HashTableFormat::UINT64,
+                                                            tstage->outputDataSetID());
+                            else
+                                task->sinkOutputToHashTable(HashTableFormat::BYTES,
+                                                            tstage->outputDataSetID());
+                        }
+                        else {
+                            assert(tstage->outputMode() == EndPointMode::FILE ||
+                                   tstage->outputMode() == EndPointMode::MEMORY);
+                            task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
+                        }
+                        task->sinkExceptionsToMemory(inputSchema);
+                        task->setStageID(tstage->getID());
+                        // add to tasks
+                        tasks.emplace_back(std::move(task));
+                    }
+                }
+            }
+        }
+    }
+
+    void LocalBackend::loadPlaintextTasks(tuplex::TransformStage *tstage, std::vector<IExecutorTask*> &tasks,
+                       const tuplex::ContextOptions &options, tuplex::codegen::read_block_f functor) {
+        // files
+        // input is multiple files, use split file strategy here.
+        // and issue tasks to executor workqueue!
+        using namespace std;
+        assert(tstage->inputMode() == EndPointMode::FILE);
+
+        bool normalCaseEnabled = options.OPT_NULLVALUE_OPTIMIZATION();
+        auto inputSchema = tstage->normalCaseInputSchema();
+        auto inputRowType = inputSchema.getRowType();
+        auto outputSchema = tstage->normalCaseOutputSchema();
+
+        // split input files into multiple tasks
+        // => for now simply one task per file
+        auto fileSchema = Schema(Schema::MemoryLayout::ROW, python::Type::makeTupleType({python::Type::STRING, python::Type::I64}));
+
+        std::vector<std::string> header;
+        // fetch from first FileInputOperator number of input columns (BEFORE optimization/projection pushdown!)
+        size_t numColumns = tstage->csvNumFileInputColumns();
+
+
+        // CSV, set header
+        if(tstage->csvHasHeader()) {
+            // because of projection pushdown, need to decode from input params!
+            header = tstage->csvHeader();
+        }
+
+
+        // other CSV params
+        char delimiter = tstage->csvInputDelimiter();
+        char quotechar = tstage->csvInputQuotechar();
+
+        vector<bool>  colsToKeep = tstage->columnsToKeep(); // after projection pushdown, what to keep
+
+        for(auto partition : tstage->inputPartitions()) {
+            // get num
+            auto numFiles = partition->getNumRows();
+            const uint8_t* ptr = partition->lock();
+            size_t bytesRead = 0;
+            // found
+            for(int i = 0; i < numFiles; ++i) {
+                // found file -> create task / split into multiple tasks
+                Row row = Row::fromMemory(fileSchema, ptr, partition->capacity() - bytesRead);
+                URI uri(row.getString(0));
+                size_t file_size = row.getInt(1);
+
+                // split files if splitsize != 0
+                if(options.INPUT_SPLIT_SIZE() == 0) {
+                    // one task per URI
+                    auto task = new TransformTask();
+                    task->setFunctor(functor);
+                    task->setPlaintextInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
+                                             !options.OPT_GENERATE_PARSER(),
+                                             numColumns, 0, 0, delimiter, quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
+                    // hash table or memory output?
+                    if(tstage->outputMode() == EndPointMode::HASHTABLE) {
+                        if (tstage->hashtableKeyByteWidth() == 8)
+                            task->sinkOutputToHashTable(HashTableFormat::UINT64,
+                                                        tstage->outputDataSetID());
+                        else
+                            task->sinkOutputToHashTable(HashTableFormat::BYTES,
+                                                        tstage->outputDataSetID());
+                    }
+                    else {
+                        assert(tstage->outputMode() == EndPointMode::FILE ||
+                               tstage->outputMode() == EndPointMode::MEMORY);
+                        task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
+                    }
+
+                    task->sinkExceptionsToMemory(inputSchema);
+                    task->setStageID(tstage->getID());
+                    // add to tasks
+                    tasks.emplace_back(std::move(task));
+                } else {
+                    // split files according to split size
+                    size_t s = 0;
+                    size_t splitSize = options.INPUT_SPLIT_SIZE();
+                    int num_parts = 0;
+
+                    // two options: 1.) file is larger than split size => split 2.) one task for fiel_size <= split size
+                    if(file_size <= splitSize) {
+                        // 1 task (range 0,0 to indicate full file)
+                        auto task = new TransformTask();
+                        task->setFunctor(functor);
+                        task->setPlaintextInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
+                                                 !options.OPT_GENERATE_PARSER(),
+                                                 numColumns, 0, 0, delimiter,
+                                                 quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
+                        // hash table or memory output?
+                        if(tstage->outputMode() == EndPointMode::HASHTABLE) {
+                            if (tstage->hashtableKeyByteWidth() == 8)
+                                task->sinkOutputToHashTable(HashTableFormat::UINT64,
+                                                            tstage->outputDataSetID());
+                            else
+                                task->sinkOutputToHashTable(HashTableFormat::BYTES,
+                                                            tstage->outputDataSetID());
+                        }
+                        else {
+                            assert(tstage->outputMode() == EndPointMode::FILE ||
+                                   tstage->outputMode() == EndPointMode::MEMORY);
+                            task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
+                        }
+                        task->sinkExceptionsToMemory(inputSchema);
+                        task->setStageID(tstage->getID());
+                        // add to tasks
+                        tasks.emplace_back(std::move(task));
+                        num_parts++;
+                    } else {
+                        // split into multiple tasks
+                        while(s + splitSize <= file_size) {
+
+                            auto rangeStart = s;
+                            auto rangeEnd = std::min(s + splitSize, file_size);
+
+                            // last task should go to file end, i.e. modify accordingly
+                            if(file_size - rangeEnd < splitSize)
+                                rangeEnd = file_size;
+
+                            auto task = new TransformTask();
+                            task->setFunctor(functor);
+                            task->setPlaintextInputFileSource(uri, normalCaseEnabled, tstage->fileInputOperatorID(), inputRowType, header,
+                                                     !options.OPT_GENERATE_PARSER(),
+                                                     numColumns, rangeStart, rangeEnd - rangeStart, delimiter,
+                                                     quotechar, colsToKeep, options.PARTITION_SIZE(), tstage->inputFormat());
+                            // hash table or memory output?
+                            if(tstage->outputMode() == EndPointMode::HASHTABLE) {
+                                if (tstage->hashtableKeyByteWidth() == 8)
+                                    task->sinkOutputToHashTable(HashTableFormat::UINT64,
+                                                                tstage->outputDataSetID());
+                                else
+                                    task->sinkOutputToHashTable(HashTableFormat::BYTES,
+                                                                tstage->outputDataSetID());
+                            }
+                            else {
+                                assert(tstage->outputMode() == EndPointMode::FILE ||
+                                       tstage->outputMode() == EndPointMode::MEMORY);
+                                task->sinkOutputToMemory(outputSchema, tstage->outputDataSetID());
+                            }
+                            task->sinkExceptionsToMemory(inputSchema);
+                            task->setStageID(tstage->getID());
+                            // add to tasks
+                            tasks.emplace_back(std::move(task));
+
+                            s += splitSize;
+                            num_parts++;
+                        }
+                    }
+
+                    stringstream ss;
+                    ss<<"split "<<uri.toPath()<<" into "<<pluralize(num_parts, "task");
+                    logger().info(ss.str());
+                }
+
+                ptr += row.serializedLength();
+                bytesRead += row.serializedLength();
+            }
+
+            partition->unlock();
+        }
     }
 
     PyObject* preparePythonPipeline(const std::string& py_code, const std::string& pipeline_name) {

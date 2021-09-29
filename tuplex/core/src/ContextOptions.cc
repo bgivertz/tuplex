@@ -629,6 +629,10 @@ namespace tuplex {
         return memStringToSize(_store.at("tuplex.inputSplitSize"));
     }
 
+    size_t ContextOptions::ORC_SPLIT_SIZE() const {
+        return memStringToSize(_store.at("tuplex.orc.splitSize"));
+    }
+
     size_t ContextOptions::READ_BUFFER_SIZE() const {
         return memStringToSize(_store.at("tuplex.readBufferSize"));
     }

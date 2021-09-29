@@ -729,7 +729,20 @@ namespace tuplex {
         _invalidateSourceAfterUse = invalidateAfterUse;
     }
 
-    void TransformTask::setInputFileSource(const URI& inputFile,
+    void TransformTask::setOrcInputFileSource(const URI& inputFile,
+                                              int64_t operatorID,
+                                              const python::Type& rowType,
+                                              size_t partitionSize,
+                                              size_t rangeStart, size_t rangeEnd) {
+        resetSources();
+        _inputFilePath = inputFile;
+        _inputSchema = Schema(Schema::MemoryLayout::ROW, rowType);
+        auto orc = new OrcReader(this, reinterpret_cast<codegen::read_block_f>(_functor), operatorID, partitionSize, _inputSchema);
+        orc->setRange(rangeStart, rangeEnd);
+        _reader.reset(orc);
+    }
+
+    void TransformTask::setPlaintextInputFileSource(const URI& inputFile,
                                            bool makeParseExceptionsInternal,
                                            int64_t operatorID,
                                            const python::Type& rowType,
@@ -766,12 +779,6 @@ namespace tuplex {
                     auto text = new TextReader(this, reinterpret_cast<codegen::cells_row_f>(_functor));
                     text->setRange(rangeStart, rangeStart+rangeSize);
                     _reader.reset(text);
-                    break;
-                }
-                case FileFormat::OUTFMT_ORC: {
-                    auto orc = new OrcReader(this, reinterpret_cast<codegen::read_block_f>(_functor), operatorID, partitionSize, _inputSchema);
-                    orc->setRange(rangeStart, rangeSize);
-                    _reader.reset(orc);
                     break;
                 }
                 default:

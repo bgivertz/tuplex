@@ -218,6 +218,8 @@ namespace tuplex {
             return _fileInputParameters.at("delimiter")[0];
         }
 
+        size_t orcNumStripes() const { return std::stoi(_fileInputParameters.at("orcNumStripes")); }
+
         inline char csvInputQuotechar() const {
             return _fileInputParameters.at("quotechar")[0];
         }

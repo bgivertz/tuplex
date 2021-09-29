@@ -114,6 +114,8 @@ namespace tuplex {
 
         size_t INPUT_SPLIT_SIZE() const; //! maximum size of an input file, before it is split. 0 means no splitting
 
+        size_t ORC_SPLIT_SIZE() const;
+
         inline std::string AWS_SCRATCH_DIR() const {
             return get("tuplex.aws.scratchDir");
         }

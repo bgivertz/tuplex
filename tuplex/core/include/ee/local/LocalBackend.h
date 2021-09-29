@@ -65,9 +65,13 @@ namespace tuplex {
          */
         void freeExecutors();
 
-
         std::vector<IExecutorTask*> createLoadAndTransformToMemoryTasks(TransformStage* tstage, const ContextOptions& options,  codegen::read_block_f functor);
         void executeTransformStage(TransformStage* tstage);
+
+        void loadPlaintextTasks(tuplex::TransformStage *tstage, std::vector<IExecutorTask*> &tasks,
+                                const tuplex::ContextOptions &options, tuplex::codegen::read_block_f functor);
+        void loadOrcTasks(tuplex::TransformStage *tstage, std::vector<IExecutorTask*> &tasks,
+                                const tuplex::ContextOptions &options, tuplex::codegen::read_block_f functor);
 
 
         /*!

@@ -39,6 +39,7 @@ namespace tuplex {
         char _delimiter;
         bool _header;
         std::vector<std::string> _null_values;
+        size_t _orcNumStripes;
 
         Schema _optimizedSchema; // schema after selection pushdown is performed.
 
@@ -159,6 +160,7 @@ namespace tuplex {
         char delimiter() const { return _delimiter;}
         char quotechar() const { return _quotechar;}
         std::vector<std::string> null_values() const { return _null_values; }
+        size_t orcNumStripes() const { return _orcNumStripes; }
 
         std::unordered_map<size_t, python::Type> typeHints() const { return _indexBasedHints; }
 

@@ -136,7 +136,12 @@ namespace tuplex {
 
         void setInputMemorySource(Partition* partition, bool invalidateAfterUse=true);
         void setInputMemorySources(const std::vector<Partition*>& partitions, bool invalidateAfterUse=true);
-        void setInputFileSource(const URI& inputFile,
+        void setOrcInputFileSource(const URI& inputFile,
+                                   int64_t operatorID,
+                                   const python::Type& rowType,
+                                   size_t partitionSize,
+                                   size_t rangeStart, size_t rangeEnd);
+        void setPlaintextInputFileSource(const URI& inputFile,
                                 bool makeParseExceptionsInternal,
                                 int64_t operatorID,
                                 const python::Type& rowType,
