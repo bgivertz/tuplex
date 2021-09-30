@@ -1003,8 +1003,15 @@ namespace tuplex {
                                                                      // need to manually merged.
                 unordered_map<tuple<int64_t, ExceptionCode>, size_t> ecounts;
                 size_t rowDelta = 0;
+
+                auto operators = tstage->operators();
+                auto reservoir = new TransformStageExceptionReservoir(tstage, operators);
+
                 for (const auto& task : completedTasks) {
                     // update exception counts
+                    auto taskEcounts = getExceptionCounts(task);
+                    reservoir->addExceptions(taskEcounts, getRemainingExceptions(task), false);
+
                     ecounts = merge_ecounts(ecounts, getExceptionCounts(task));
 
                     auto taskOutput = getOutputPartitions(task);
@@ -1054,9 +1061,8 @@ namespace tuplex {
                 // @TODO: set in Context sample up for unresolved exceptions!
                 // => limit by max per op per type
                 // => general case partitions set as artificial exceptions to keep around...
-
                 // set to stage output
-                tstage->setMemoryResult(output, general_output, nonconforming_rows, ecounts);
+                tstage->setMemoryResult(output, general_output, nonconforming_rows, ecounts, reservoir->samples());
                 break;
             }
             case EndPointMode::HASHTABLE: {
@@ -1971,6 +1977,6 @@ namespace tuplex {
         }
 
         Logger::instance().defaultLogger().info("writing output took " + std::to_string(timer.time()) + "s");
-        tstage->setFileResult(ecounts);
+        tstage->setFileResult(ecounts, {});
     }
 } // namespace tuplex

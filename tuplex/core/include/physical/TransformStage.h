@@ -157,13 +157,15 @@ namespace tuplex {
         void setMemoryResult(const std::vector<Partition*>& partitions,
                              const std::vector<Partition*>& unresolved_exceptions=std::vector<Partition*>{},
                              const std::vector<std::tuple<size_t, PyObject*>>& interpreterRows=std::vector<std::tuple<size_t, PyObject*>>{},
-                             const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts=std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>()); // creates local result set?
-        void setFileResult(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts); // creates empty result set with exceptions
+                             const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts=std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>(),
+                             const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions=std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>()); // creates local result set?
+        void setFileResult(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts,
+                           const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions); // creates empty result set with exceptions
 
         void setEmptyResult() {
             std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> ecounts;
             if(fileOutputMode())
-                setFileResult(ecounts);
+                setFileResult(ecounts, {});
             else
                 setMemoryResult(std::vector<Partition*>(),
                         std::vector<Partition*>(),

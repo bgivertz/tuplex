@@ -15,6 +15,7 @@
 #include <JITCompiler.h>
 #include <ee/IBackend.h>
 #include "ResultSet.h"
+#include <logical/LogicalOperator.h>
 #define EOF (-1)
 #include <nlohmann/json.hpp>
 
@@ -26,6 +27,7 @@ namespace tuplex {
     class LogicalPlan;
     class Context;
     class ResultSet;
+    class LogicalOperator;
 
     // various sinks/sources/...
     enum class EndPointMode {
@@ -44,6 +46,8 @@ namespace tuplex {
         std::vector<PhysicalStage*> _predecessors;
         int64_t _number;
         std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> _ecounts; //! exception counts for this stage.
+        std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> _exceptions;
+        std::vector<LogicalOperator*> _operators;
     protected:
         IBackend* _backend;
     public:
@@ -53,6 +57,10 @@ namespace tuplex {
         }
 
         virtual ~PhysicalStage();
+
+        std::vector<LogicalOperator*> operators() const {return _operators;}
+
+        void setOperators(std::vector<LogicalOperator*> operators) {_operators  = operators;}
 
         std::vector<PhysicalStage*> predecessors() const { return _predecessors; }
 
@@ -88,11 +96,17 @@ namespace tuplex {
             return _ecounts;
         }
 
+        virtual std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> exceptions() const {
+            return _exceptions;
+        }
+
         /*!
          * set exception counts for this stage
          * @param ecounts
          */
         void setExceptionCounts(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts) { _ecounts = ecounts; }
+
+        void setExceptions(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions) { _exceptions = exceptions; }
 
         /*!
          * return stage's output as resultset

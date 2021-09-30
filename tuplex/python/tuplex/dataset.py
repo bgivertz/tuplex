@@ -532,3 +532,7 @@ class DataSet:
 
         """
         return self._dataSet.exception_counts()
+
+    @property
+    def exceptions(self):
+        return self._dataSet.exceptions()

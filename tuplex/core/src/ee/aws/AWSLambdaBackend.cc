@@ -390,7 +390,7 @@ namespace tuplex {
         switch(tstage->outputMode()) {
             case EndPointMode::FILE: {
                 std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> ecounts; // Todo: fill in from lambda
-                tstage->setFileResult(ecounts);
+                tstage->setFileResult(ecounts, {});
                 break;
             }
 

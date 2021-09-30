@@ -121,6 +121,8 @@ namespace tuplex {
          */
         boost::python::object exception_counts();
 
+        boost::python::object exceptions();
+
         void tocsv(const std::string &file_path,
               const std::string &lambda_code ="",
               const std::string &pickled_code = "",

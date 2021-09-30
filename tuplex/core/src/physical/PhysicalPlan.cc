@@ -367,6 +367,14 @@ namespace tuplex {
 
         // generate code for stage and init vars
         auto stage = builder.build(this, backend());
+
+        // converting deque of ops to vector of ops
+        std::vector<LogicalOperator*> operators;
+        for (auto op : ops) {
+            operators.push_back(op);
+        }
+        stage->setOperators(operators);
+
         stage->setDataAggregationMode(hashGroupedDataType);
         // fill in physical plan data
         // b.c. the stages were constructed top-down, need to reverse the stages
@@ -567,6 +575,7 @@ namespace tuplex {
 
         // exceptions found? ==> print out here using unoptimized logical plan.
         std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> ecounts;
+        std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> exceptions;
         std::queue<PhysicalStage*> q;
         q.push(_stage);
         while(!q.empty()) {
@@ -583,6 +592,15 @@ namespace tuplex {
                     it->second += keyval.second;
                 }
             }
+
+            auto stage_exceptions = stage->exceptions();
+            for (auto keyval : stage_exceptions) {
+                auto it = exceptions.find(keyval.first);
+                if (it == exceptions.end())
+                    exceptions[keyval.first] = keyval.second;
+                // TODO Combine samples
+            }
+
             for(auto pred : stage->predecessors())
                 q.push(pred);
         }
@@ -595,6 +613,7 @@ namespace tuplex {
         // update context job statistics
         _context.metrics().totalExceptionCount = numTotalExceptionsFound;
         _context.metrics().setExceptionCounts(ecounts);
+        _context.metrics().setExceptions(exceptions);
 
         if(numTotalExceptionsFound > 0) {
             std::stringstream ss;

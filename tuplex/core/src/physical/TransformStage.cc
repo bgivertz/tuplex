@@ -112,7 +112,9 @@ namespace tuplex {
     }
 
 
-    void TransformStage::setFileResult(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> &ecounts) {
+    void TransformStage::setFileResult(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> &ecounts,
+                                       const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions) {
+        setExceptions(exceptions);
         setExceptionCounts(ecounts);
 
         _rs = emptyResultSet();
@@ -121,7 +123,9 @@ namespace tuplex {
     void TransformStage::setMemoryResult(const std::vector<Partition *> &partitions,
                                          const std::vector<Partition*>& unresolved_exceptions,
                                          const std::vector<std::tuple<size_t, PyObject*>>& interpreterRows,
-                                         const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> &ecounts) {
+                                         const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> &ecounts,
+                                         const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions) {
+        setExceptions(exceptions);
         setExceptionCounts(ecounts);
         _unresolved_exceptions = unresolved_exceptions;
 

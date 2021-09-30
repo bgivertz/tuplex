@@ -1559,4 +1559,26 @@ namespace tuplex {
 
         return boost::python::object(boost::python::handle<>(dict));
     }
+
+    boost::python::object PythonDataSet::exceptions() {
+        // return dict object
+        auto dict = PyDict_New();
+
+        if(this->_dataset->isError())
+            return boost::python::object(); // none
+
+        // fetch from dataset corresponding metrics
+        auto exceptions = _dataset->getContext()->metrics().getOperatorExceptions(this->_dataset->getOperator()->getID());
+        for(const auto& keyval : exceptions) {
+            auto rows = keyval.second.rows;
+            auto list = PyList_New(rows.size());
+            for (int i = 0; i < rows.size(); ++i) {
+                auto pyRow = python::rowToPython(rows.at(i), true);
+                PyList_SetItem(list, i, pyRow);
+            }
+            PyDict_SetItemString(dict, keyval.first.c_str(), list);
+        }
+
+        return boost::python::object(boost::python::handle<>(dict));
+    }
 }

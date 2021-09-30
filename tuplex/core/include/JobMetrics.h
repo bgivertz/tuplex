@@ -23,6 +23,7 @@ namespace tuplex {
     class JobMetrics {
     private:
         std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> _exception_counts;
+        std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> _exceptions;
         double _logical_optimization_time_s = 0.0;
         double _llvm_optimization_time_s = 0.0;
         double _llvm_compilation_time_s = 0.0;
@@ -65,6 +66,10 @@ namespace tuplex {
             _exception_counts = ecounts;
         }
 
+        inline void setExceptions(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions) {
+            _exceptions = exceptions;
+        }
+
         // set back to neutral values
         inline void reset() {
             totalExceptionCount = 0;
@@ -81,6 +86,19 @@ namespace tuplex {
             }
             return counts;
         }
+
+        inline std::unordered_map<std::string, ExceptionSample> getOperatorExceptions(int64_t operatorID) const {
+            std::unordered_map<std::string, ExceptionSample> exceptions;
+            for(const auto& keyval : _exceptions) {
+                auto opID = std::get<0>(keyval.first);
+                auto ec = std::get<1>(keyval.first);
+                auto c = keyval.second;
+                if(opID == operatorID)
+                    exceptions[exceptionCodeToPythonClass(ec)] = c;
+            }
+            return exceptions;
+        }
+
         /*!
         * setter for logical optimization time
         * @param time a double representing logical optimization time in s

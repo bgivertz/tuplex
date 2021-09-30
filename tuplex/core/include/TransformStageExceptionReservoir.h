@@ -33,6 +33,10 @@ namespace tuplex {
                            const std::vector<Partition*> &exceptions,
                            bool excludeAvailableResolvers);
 
+        std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> samples() {
+            return _samples;
+        }
+
         LogicalOperator* getOperator(int64_t opID);
         int64_t getOperatorIndex(int64_t opID);
 
