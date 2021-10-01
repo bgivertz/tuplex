@@ -598,7 +598,8 @@ namespace tuplex {
                 auto it = exceptions.find(keyval.first);
                 if (it == exceptions.end())
                     exceptions[keyval.first] = keyval.second;
-                // TODO Combine samples
+                else
+                    it->second.rows.insert(it->second.rows.end(), keyval.second.rows.begin(), keyval.second.rows.end());
             }
 
             for(auto pred : stage->predecessors())

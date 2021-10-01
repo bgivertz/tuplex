@@ -96,6 +96,10 @@ namespace tuplex {
             return _ecounts;
         }
 
+        /*!
+         * return map of (operator ID, exception code) -> exception sample
+         * @return map
+         */
         virtual std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> exceptions() const {
             return _exceptions;
         }
@@ -106,6 +110,10 @@ namespace tuplex {
          */
         void setExceptionCounts(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts) { _ecounts = ecounts; }
 
+        /*!
+         * set exception samples for this stage
+         * @param exceptions
+         */
         void setExceptions(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample>& exceptions) { _exceptions = exceptions; }
 
         /*!

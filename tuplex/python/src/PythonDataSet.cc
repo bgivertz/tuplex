@@ -1570,10 +1570,10 @@ namespace tuplex {
         // fetch from dataset corresponding metrics
         auto exceptions = _dataset->getContext()->metrics().getOperatorExceptions(this->_dataset->getOperator()->getID());
         for(const auto& keyval : exceptions) {
-            auto rows = keyval.second.rows;
-            auto list = PyList_New(rows.size());
-            for (int i = 0; i < rows.size(); ++i) {
-                auto pyRow = python::rowToPython(rows.at(i), true);
+            auto numRows = keyval.second.rows.size();
+            auto list = PyList_New(numRows);
+            for (int i = 0; i < numRows; ++i) {
+                auto pyRow = python::rowToPython(keyval.second.rows.at(i), true);
                 PyList_SetItem(list, i, pyRow);
             }
             PyDict_SetItemString(dict, keyval.first.c_str(), list);

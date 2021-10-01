@@ -121,6 +121,10 @@ namespace tuplex {
          */
         boost::python::object exception_counts();
 
+        /*!
+         * expose a sample of exception rows of a specific operator
+         * @return dictionary with exception rows
+         */
         boost::python::object exceptions();
 
         void tocsv(const std::string &file_path,

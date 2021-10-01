@@ -164,13 +164,15 @@ namespace tuplex {
 
         void setEmptyResult() {
             std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t> ecounts;
+            std::unordered_map<std::tuple<int64_t, ExceptionCode>, ExceptionSample> exceptions;
             if(fileOutputMode())
-                setFileResult(ecounts, {});
+                setFileResult(ecounts, exceptions);
             else
                 setMemoryResult(std::vector<Partition*>(),
                         std::vector<Partition*>(),
                                 std::vector<std::tuple<size_t, PyObject*>>(),
-                                ecounts);
+                                ecounts,
+                                exceptions);
         }
 
         std::string bitCode() const {

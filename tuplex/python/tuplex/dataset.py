@@ -535,4 +535,8 @@ class DataSet:
 
     @property
     def exceptions(self):
+        """
+        Returns: dictionary of exception class names with a sample of the rows that caused the exceptions. Returns
+        None if error occured in dataset.
+        """
         return self._dataSet.exceptions()

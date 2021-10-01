@@ -1977,6 +1977,7 @@ namespace tuplex {
         }
 
         Logger::instance().defaultLogger().info("writing output took " + std::to_string(timer.time()) + "s");
+        // TODO: Calculate exceptions
         tstage->setFileResult(ecounts, {});
     }
 } // namespace tuplex

@@ -87,6 +87,11 @@ namespace tuplex {
             return counts;
         }
 
+        /*!
+         * get sample of exceptions that occurred on the operator
+         * @param operatorID
+         * @return map of exception classes to a sample
+         */
         inline std::unordered_map<std::string, ExceptionSample> getOperatorExceptions(int64_t operatorID) const {
             std::unordered_map<std::string, ExceptionSample> exceptions;
             for(const auto& keyval : _exceptions) {
