@@ -9,26 +9,125 @@
 #  License: Apache 2.0                                                                                                 #
 #----------------------------------------------------------------------------------------------------------------------#
 
-import tempfile
 import unittest
-from tuplex import *
+from tuplex import Context
+from random import  randint, sample
 
 class TestExceptions(unittest.TestCase):
 
     def setUp(self):
-        self.conf = {"webui.enable": False, "driverMemory": "8MB", "partitionSize": "256KB"}
-        self.conf_in_order = {"webui.enable": False, "driverMemory": "8MB", "partitionSize": "256KB", "tuplex.optimizer.mergeExceptionsInOrder": True}
+        self.conf = {"tuplex.webui.enable": False, "driverMemory": "8MB", "partitionSize": "256KB"}
+        self.conf_in_order = {"tuplex.webui.enable": False, "driverMemory": "8MB", "partitionSize": "256KB", "tuplex.optimizer.mergeExceptionsInOrder": True}
 
-    def test_csv(self):
-        c = Context(self.conf)
+    def test_merge_some_fail(self):
+        c = Context(self.conf_in_order)
 
-        output = c.csv("resources/type_violation.csv").map(lambda x, y: x).collect()
-        print(output)
+        input = [1, 2, -1, 5, 6, 7, -2, 10, 11, 12, -3, 15]
+        output = c.parallelize(input) \
+            .map(lambda x: 1 // (x - x) if x == -1 or x == -2 or x == -3 else x) \
+            .resolve(ZeroDivisionError, lambda x: 1 // (x - x) if x == -2 else x) \
+            .collect()
+        self.compare([1, 2, -1, 5, 6, 7, 10, 11, 12, -3, 15], output)
+
+    def test_merge_both_but_no_resolve(self):
+        c = Context(self.conf_in_order)
+
+        input = [1, 2, -1, "a", 5, 6, 7, -2, "b", 10, 11, 12, -3, "c", 15]
+        output = c.parallelize(input)\
+            .map(lambda x: 1 // (x - x) if x == -1 or x == -2 or x == -3 else x)\
+            .resolve(ZeroDivisionError, lambda x: 1 // (x - x) if x == -2 else x)\
+            .collect()
+        self.compare([1, 2, -1, "a", 5, 6, 7, "b", 10, 11, 12, -3, "c", 15], output)
+
+        input = list(range(1, 100001))
+        sampled = sample(input, 40000)
+        for i in sampled:
+            ind = randint(0, 2)
+            if ind == 0:
+                input[i - 1] = str(input[i - 1])
+            elif ind == 1:
+                input[i - 1] = 0
+            else:
+                input[i - 1] = -1
+        expectedOutput = list(filter(lambda x: x != 0, input))
+
+        output = c.parallelize(input).map(lambda x: 1 // (x - x) if x == -1 or x == 0 else x).resolve(ZeroDivisionError, lambda x: 1 // x if x == 0 else x).collect()
+        self.compare(expectedOutput, output)
+
+    def test_merge_both(self):
+        c = Context(self.conf_in_order)
+
+        input = [1, 2, 0, "a", 5, 6, 7, 0, "b", 10, 11, 12, 0, "c", 15]
+        output = c.parallelize(input).map(lambda x: 1 / x if x == 0 else x).resolve(ZeroDivisionError, lambda x: -1).collect()
+        self.compare([1, 2, -1, "a", 5, 6, 7, -1, "b", 10, 11, 12, -1, "c", 15], output)
+
+        input = [1, 2, "a", 0, 5, 6, 7, "b", 0, 10, 11, 12, "c", 0, 15]
+        output = c.parallelize(input).map(lambda x: 1 / x if x == 0 else x).resolve(ZeroDivisionError, lambda x: -1).collect()
+        self.compare([1, 2, "a", -1, 5, 6, 7, "b", -1, 10, 11, 12, "c", -1, 15], output)
+
+        input = list(range(1, 100001))
+        sampled = sample(input, 40000)
+        for i in sampled:
+            if randint(0, 1) == 0:
+                input[i - 1] = str(input[i - 1])
+            else:
+                input[i - 1] = 0
+
+        output = c.parallelize(input).map(lambda x: 1 / x if x == 0 else x).resolve(ZeroDivisionError, lambda x: x).collect()
+        self.compare(input, output)
+
+
+    def test_merge_input_only(self):
+        c = Context(self.conf_in_order)
+
+        input = [1, 2, "a", 4, 5, "b", 6, 7, 8, 9, 10, "d"]
+        output = c.parallelize([1, 2, "a", 4, 5, "b", 6, 7, 8, 9, 10, "d"]).map(lambda x: x).collect()
+        self.compare(input, output)
+
+        input = []
+        for i in range(40000):
+            if i % 100 == 0:
+                input.append(str(i))
+            else:
+                input.append(i)
+
+        output = c.parallelize(input).map(lambda x: x).collect()
+        self.compare(input, output)
+
+    def test_merge_runtime_only(self):
+        c = Context(self.conf_in_order)
+
+        output = c.parallelize([1, 0, 0, 4]).map(lambda x: 1 / x).resolve(ZeroDivisionError, lambda x: -1).collect()
+        self.compare([1.0, -1, -1, 0.25], output)
+
+        input = []
+        for i in range(100000):
+            if i % 100 == 0:
+                input.append(0)
+            else:
+                input.append(i)
+
+        output = c.parallelize(input).map(lambda x: 1 / x).resolve(ZeroDivisionError, lambda x: -1).collect()
+
+        expectedOutput = []
+        for i in range(100000):
+            if i % 100 == 0:
+                expectedOutput.append(-1)
+            else:
+                expectedOutput.append(1 / i)
+
+        self.compare(expectedOutput, output)
+
+    # def test_csv(self):
+    #     c = Context(self.conf)
+    #
+    #     output = c.csv("resources/type_violation.csv").map(lambda x, y: x).collect()
+    #     print(output)
 
     def test_no_normal_rows_in_result(self):
         c = Context(self.conf)
 
-        output = c.parallelize([1, None, "a", 1.2, 3, 4]).filter(lambda x: x is None or x == "a" or x == 1.2).collect()
+        output = c.parallelize([1, None, "a", 1.2, 3, 4]).filter(lambda x: x != 1 and x != 3 and x != 4).collect()
         self.compare([None, "a", 1.2], output)
 
     def test_empty_result(self):

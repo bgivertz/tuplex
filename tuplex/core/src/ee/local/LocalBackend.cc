@@ -951,11 +951,11 @@ namespace tuplex {
             }
 
             // were initial exceptions (general case) given?
-            if(!tstage->inputExceptions().empty() && merge_except_rows) {
-                auto err_msg = "when using cache with normal/general optimization, set mergeRowsInOrder=false. Not yet supported";
-                logger().error(err_msg);
-                throw std::runtime_error(err_msg);
-            }
+//            if(!tstage->inputExceptions().empty() && merge_except_rows) {
+//                auto err_msg = "when using cache with normal/general optimization, set mergeRowsInOrder=false. Not yet supported";
+//                logger().error(err_msg);
+//                throw std::runtime_error(err_msg);
+//            }
 
             // should slow path get executed
             executeSlowPath = syms->resolveFunctor || !tstage->purePythonCode().empty();
@@ -1292,7 +1292,9 @@ namespace tuplex {
         if(!tstage->persistSeparateCases())
             targetNormalCaseOutputSchema = targetGeneralCaseOutputSchema; // both are the same!
 
-        for(const auto& task : tasks) {
+        sortTasks(tasks);
+        for(int i = 0; i < tasks.size(); ++i) {
+            const auto& task = tasks[i];
             auto tt = dynamic_cast<TransformTask *>(task);
 
             // debug printing for info on resolve tasks
@@ -1315,7 +1317,16 @@ namespace tuplex {
             else if(compareOrders(maxOrder, tt->getOrder()))
                 maxOrder = tt->getOrder();
 
-            if (tt->exceptionCounts().size() > 0) {
+            size_t numInputExceptions = 0;
+            size_t inputInd;
+            size_t inputOff;
+            if (tstage->inputPartitionInfo().size() > i) {
+                auto partitionInfo = tstage->inputPartitionInfo()[i];
+                numInputExceptions = std::get<0>(partitionInfo);
+                inputInd = std::get<1>(partitionInfo);
+                inputOff = std::get<2>(partitionInfo);
+            }
+            if (tt->exceptionCounts().size() > 0 || numInputExceptions > 0) {
                 // task found with exceptions in it => exception partitions need to be resolved using special functor
 
                 // hash-table output not yet supported
@@ -1330,6 +1341,10 @@ namespace tuplex {
                 auto rtask = new ResolveTask(stageID,
                                              tt->getOutputPartitions(),
                                              tt->getExceptionPartitions(),
+                                             tstage->inputExceptions(),
+                                             numInputExceptions,
+                                             inputInd,
+                                             inputOff,
                                              opsToCheck,
                                              exceptionInputSchema,
                                              compiledSlowPathOutputSchema,
@@ -1410,90 +1425,90 @@ namespace tuplex {
             }
         }
 
-        // are input exceptions given? create tasks here...
-        // @TODO: python objects??
-        if(!tstage->inputExceptions().empty()) {
-            // add into ops to check the dummy 0 which is used in Caching tasks...
-            opsToCheck.push_back(0);
-
-            assert(!merge_rows_in_order); // @TODO: no support for this yet... -> it might be complicated because of filters & Co to figure out the right row numbers...
-            for(auto& p : tstage->inputExceptions()) {
-                maxOrder.back()++;
-
-                auto rtask = new ResolveTask(stageID,
-                                             std::vector<Partition*>(),
-                                                     vector<Partition*>{p},
-                                                     opsToCheck,
-                                                     tstage->inputSchema(),
-                                                     compiledSlowPathOutputSchema,
-                                                     targetNormalCaseOutputSchema,
-                                                     targetGeneralCaseOutputSchema,
-                                                     merge_rows_in_order,
-                                                     allowNumericTypeUnification,
-                                                     outFormat,
-                                                     csvDelimiter,
-                                                     csvQuotechar,
-                                                     functor,
-                                                     pip_object);
-
-                // to implement, store i.e. tables within tasks...
-                rtask->setHybridIntermediateHashTables(tstage->predecessors().size(), input_intermediates.hybrids);
-
-                rtask->setOrder(maxOrder); // this is arbitrary, just put the slow path rows at the end
-                // hash output?
-                if(hashOutput) {
-                    if (tstage->hashtableKeyByteWidth() == 8) {
-                        auto h = tstage->dataAggregationMode();
-                        rtask->sinkOutputToHashTable(HashTableFormat::UINT64, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
-                    } else {
-                        rtask->sinkOutputToHashTable(HashTableFormat::BYTES, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
-                    }
-                }
-                resolveTasks.push_back(rtask);
-            }
-        }
-
-        if(!tstage->pythonObjects().empty()) {
-            // add into ops to check the dummy 0 which is used in Caching tasks...
-            opsToCheck.push_back(0);
-
-            // @TODO: no support for this yet... -> it might be complicated because of filters & Co to figure out the right row numbers...
-            assert(!merge_rows_in_order);
-            for(auto& p : tstage->pythonObjects()) {
-                maxOrder.back()++;
-
-                auto rtask = new ResolveTask(stageID,
-                                             std::vector<Partition*>(),
-                                             vector<Partition*>{p},
-                                             opsToCheck,
-                                             tstage->inputSchema(),
-                                             compiledSlowPathOutputSchema,
-                                             targetNormalCaseOutputSchema,
-                                             targetGeneralCaseOutputSchema,
-                                             true,
-                                             allowNumericTypeUnification,
-                                             outFormat,
-                                             csvDelimiter,
-                                             csvQuotechar,
-                                             functor,
-                                             pip_object);
-
-                // to implement, store i.e. tables within tasks...
-                rtask->setHybridIntermediateHashTables(tstage->predecessors().size(), input_intermediates.hybrids);
-
-                rtask->setOrder(maxOrder); // this is arbitrary, just put the slow path rows at the end
-                // hash output?
-                if(hashOutput) {
-                    if (tstage->hashtableKeyByteWidth() == 8) {
-                        auto h = tstage->dataAggregationMode();
-                        rtask->sinkOutputToHashTable(HashTableFormat::UINT64, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
-                    } else {
-                        rtask->sinkOutputToHashTable(HashTableFormat::BYTES, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
-                    }
-                }
-                resolveTasks.push_back(rtask);
-            }
-        }
+//        // are input exceptions given? create tasks here...
+//        // @TODO: python objects??
+//        if(!tstage->inputExceptions().empty()) {
+//            // add into ops to check the dummy 0 which is used in Caching tasks...
+//            opsToCheck.push_back(0);
+//
+//            assert(!merge_rows_in_order); // @TODO: no support for this yet... -> it might be complicated because of filters & Co to figure out the right row numbers...
+//            for(auto& p : tstage->inputExceptions()) {
+//                maxOrder.back()++;
+//
+//                auto rtask = new ResolveTask(stageID,
+//                                             std::vector<Partition*>(),
+//                                                     vector<Partition*>{p},
+//                                                     opsToCheck,
+//                                                     tstage->inputSchema(),
+//                                                     compiledSlowPathOutputSchema,
+//                                                     targetNormalCaseOutputSchema,
+//                                                     targetGeneralCaseOutputSchema,
+//                                                     merge_rows_in_order,
+//                                                     allowNumericTypeUnification,
+//                                                     outFormat,
+//                                                     csvDelimiter,
+//                                                     csvQuotechar,
+//                                                     functor,
+//                                                     pip_object);
+//
+//                // to implement, store i.e. tables within tasks...
+//                rtask->setHybridIntermediateHashTables(tstage->predecessors().size(), input_intermediates.hybrids);
+//
+//                rtask->setOrder(maxOrder); // this is arbitrary, just put the slow path rows at the end
+//                // hash output?
+//                if(hashOutput) {
+//                    if (tstage->hashtableKeyByteWidth() == 8) {
+//                        auto h = tstage->dataAggregationMode();
+//                        rtask->sinkOutputToHashTable(HashTableFormat::UINT64, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
+//                    } else {
+//                        rtask->sinkOutputToHashTable(HashTableFormat::BYTES, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
+//                    }
+//                }
+//                resolveTasks.push_back(rtask);
+//            }
+//        }
+//
+//        if(!tstage->pythonObjects().empty()) {
+//            // add into ops to check the dummy 0 which is used in Caching tasks...
+//            opsToCheck.push_back(0);
+//
+//            // @TODO: no support for this yet... -> it might be complicated because of filters & Co to figure out the right row numbers...
+//            assert(!merge_rows_in_order);
+//            for(auto& p : tstage->pythonObjects()) {
+//                maxOrder.back()++;
+//
+//                auto rtask = new ResolveTask(stageID,
+//                                             std::vector<Partition*>(),
+//                                             vector<Partition*>{p},
+//                                             opsToCheck,
+//                                             tstage->inputSchema(),
+//                                             compiledSlowPathOutputSchema,
+//                                             targetNormalCaseOutputSchema,
+//                                             targetGeneralCaseOutputSchema,
+//                                             true,
+//                                             allowNumericTypeUnification,
+//                                             outFormat,
+//                                             csvDelimiter,
+//                                             csvQuotechar,
+//                                             functor,
+//                                             pip_object);
+//
+//                // to implement, store i.e. tables within tasks...
+//                rtask->setHybridIntermediateHashTables(tstage->predecessors().size(), input_intermediates.hybrids);
+//
+//                rtask->setOrder(maxOrder); // this is arbitrary, just put the slow path rows at the end
+//                // hash output?
+//                if(hashOutput) {
+//                    if (tstage->hashtableKeyByteWidth() == 8) {
+//                        auto h = tstage->dataAggregationMode();
+//                        rtask->sinkOutputToHashTable(HashTableFormat::UINT64, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
+//                    } else {
+//                        rtask->sinkOutputToHashTable(HashTableFormat::BYTES, tstage->dataAggregationMode(), tstage->hashOutputKeyType().withoutOptions(), tstage->hashOutputBucketType());
+//                    }
+//                }
+//                resolveTasks.push_back(rtask);
+//            }
+//        }
 
         logger().info("Created " + pluralize(resolveTasks.size(), "resolve task") + " in " + std::to_string(timer.time()) + "s");
         logger().info(std::to_string(resolveTasks.size()) + "/" + pluralize(tasks.size(), "task") + " require executing the slow path.");
@@ -1566,40 +1581,70 @@ namespace tuplex {
         return wq.popCompletedTasks();
     }
 
-    // ensure output folder exists. => separate function here, b.c. it slows down pipeline by a lot!
-    void ensureOutputFolderExists(const URI& baseURI) {
-        std::string base; // base which to use to form string
-        std::string ext; // base
+    void validateOutputSpecification(const URI& baseURI) {
+        std::string base;
+        std::string ext;
 
         auto path = baseURI.toPath();
-        auto ext_pos = path.rfind('.'); // searches for extension
-        auto slash_pos = path.rfind('/');
+        auto ext_pos = path.rfind(".");
+        auto slash_pos = path.rfind("/");
 
-        // two cases: 1) extension found 2.) extension not found
         bool isFolder = (ext_pos == std::string::npos) ||
                 (path.back() == '/') || ((slash_pos != std::string::npos) && (ext_pos < slash_pos));
 
-        if(isFolder) {
-
+        if (isFolder) {
 #ifndef NDEBUG
             Logger::instance().logger("io").info("outputting data as parts into folder " + path);
 #endif
 
-            // no extension
-            // i.e. output in folder!
-            if(!baseURI.isLocal())
-                throw std::runtime_error("VFS not supporting mkdir yet!");
+            if (!baseURI.isLocal()) {
+                throw std::runtime_error("VFS not supporting mkdir yet");
+            }
 
-            // check if folder exists, if so delete its contents (overwrite mode!)
-            // then, put part files in it!
             auto vfs = VirtualFileSystem::fromURI(baseURI);
-            if(baseURI.exists())
-                vfs.remove(baseURI);
-
-            // create dir
-            vfs.create_dir(baseURI);
+            if (!baseURI.exists()) {
+                Logger::instance().logger("io").info("output directory does not already exist, creating it now");
+                vfs.create_dir(baseURI);
+            } else {
+                auto dirContents = vfs.glob(baseURI.toString() + "/*");
+                if (!dirContents.empty()) {
+                    throw std::runtime_error("cannot output files to non-empty directory");
+                }
+            }
         }
     }
+
+//    // ensure output folder exists. => separate function here, b.c. it slows down pipeline by a lot!
+//    void ensureOutputFolderExists(const URI& baseURI) {
+//        std::string base; // base which to use to form string
+//        std::string ext; // base
+//
+//        auto path = baseURI.toPath();
+//        auto ext_pos = path.rfind('.'); // searches for extension
+//        auto slash_pos = path.rfind('/');
+//
+//        // two cases: 1) extension found 2.) extension not found
+//        bool isFolder = (ext_pos == std::string::npos) ||
+//                (path.back() == '/') || ((slash_pos != std::string::npos) && (ext_pos < slash_pos));
+//
+//        if(isFolder) {
+//
+//#ifndef NDEBUG
+//            Logger::instance().logger("io").info("outputting data as parts into folder " + path);
+//#endif
+//
+//            // no extension
+//            // i.e. output in folder!
+//            if(!baseURI.isLocal())
+//                throw std::runtime_error("VFS not supporting mkdir yet!");
+//
+//            // check if folder exists, if so delete its contents (overwrite mode!)
+//            // then, put part files in it!
+//            auto vfs = VirtualFileSystem::fromURI(baseURI);
+//            if(!baseURI.exists())
+//                vfs.create_dir(baseURI);
+//        }
+//    }
 
     /*!
      * get default file extension for supported file formats
@@ -1995,7 +2040,7 @@ namespace tuplex {
         auto fmt = tstage->outputFormat();
 
         // create folder if not clear
-        ensureOutputFolderExists(uri);
+        validateOutputSpecification(uri);
         // count number of output rows in tasks
         size_t numTotalOutputRows = 0;
         vector<Partition *> outputs; // collect all output partitions in this vector

@@ -1281,6 +1281,33 @@ namespace tuplex {
 #endif
     }
 
+    bool isSpecialCase(LogicalOperator *root) {
+        bool hasFilter = false;
+        bool hasInputExceptions = false;
+
+        std::queue<LogicalOperator *> q;
+        q.push(root);
+        while (!q.empty()) {
+            auto node = q.front(); q.pop();
+            if (node->type() == tuplex::LogicalOperatorType::FILTER) {
+                hasFilter = true;
+            }
+
+            if (!node->parents().empty()) {
+                for (auto parent : node->parents()) {
+                    q.push(parent);
+                }
+            } else {
+                if (node->type() == tuplex::LogicalOperatorType::PARALLELIZE) {
+                    auto pop = (ParallelizeOperator *) node;
+                    hasInputExceptions = !pop->getInputExceptions().empty();
+                }
+            }
+        }
+
+        return hasFilter && hasInputExceptions;
+    }
+
     LogicalPlan* LogicalPlan::optimize(const Context& context, bool inPlace) {
 
         using namespace std;
@@ -1342,6 +1369,12 @@ namespace tuplex {
 #ifndef NDEBUG
             assert(verifyLogicalPlan(_action));
 #endif
+        }
+
+        if (context.getOptions().OPT_MERGE_EXCEPTIONS_INORDER() && isSpecialCase(_action) ) {
+            Logger::instance().defaultLogger().info("OPTIMIZER: Special Case detected");
+        } else {
+            Logger::instance().defaultLogger().info("OPTIMIZER: No special case detected");
         }
 
         return this;

@@ -239,14 +239,10 @@ namespace tuplex {
         }
     }
 
-    void Context::setParallelizePythonObjects(DataSet *ds, std::vector<Partition *> pythonObjects) {
+    void Context::setParallelizeInputExceptions(DataSet *ds, const std::vector<Partition *>& exceptions, const std::vector<std::tuple<size_t, size_t, size_t>>& info) {
         auto parallelizeOp = (ParallelizeOperator *) ds->getOperator();
-        parallelizeOp->setPythonObjects(pythonObjects);
-    }
-
-    void Context::setParallelizeGeneralCasePartitions(DataSet *ds, std::vector<Partition *> generalCasePartitions) {
-        auto parallelizeOp = (ParallelizeOperator *) ds->getOperator();
-        parallelizeOp->setGeneralCasePartitions(generalCasePartitions);
+        parallelizeOp->setInputExceptions(exceptions);
+        parallelizeOp->setInputPartitionInfo(info);
     }
 
     DataSet& Context::parallelize(const std::vector<Row>& rows, const std::vector<std::string>& columnNames) {

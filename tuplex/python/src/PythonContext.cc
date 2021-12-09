@@ -52,11 +52,15 @@ namespace tuplex {
         *rawPtr = 0;
         double* ptr = (double*)(rawPtr + 1);
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
             // check capacity and realloc if necessary get a new partition
             if(partition->capacity() < numBytesSerialized + sizeof(double)) {
+                auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                previousNumExceptions += newExceptions;
                 partition->unlockWrite();
                 partitions.push_back(partition);
                 partition = driver->allocWritablePartition(std::max(sizeof(double), allocMinSize), schema, -1);
@@ -94,6 +98,8 @@ namespace tuplex {
             numBytesSerialized += sizeof(double);
         }
 
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
         partition->unlockWrite();
         partitions.push_back(partition);
 
@@ -122,11 +128,17 @@ namespace tuplex {
         *rawPtr = 0;
         int64_t* ptr = rawPtr + 1;
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
+        size_t previousNumRows = 0;
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
             // check capacity and realloc if necessary get a new partition
             if(partition->capacity() < numBytesSerialized + sizeof(int64_t)) {
+                auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                previousNumExceptions += newExceptions;
+                previousNumRows += newExceptions + *rawPtr;
                 partition->unlockWrite();
                 partitions.push_back(partition);
                 partition = driver->allocWritablePartition(std::max(sizeof(int64_t), allocMinSize), schema, -1);
@@ -141,7 +153,7 @@ namespace tuplex {
                 val = PyLong_AsLongLong(obj);
                 if(PyErr_Occurred()) { // too large integer?
                     PyErr_Clear();
-                    _badParallelizeObjects.emplace_back(std::make_tuple(i, obj));
+                    _badParallelizeObjects.emplace_back(std::make_tuple(i - previousNumRows, obj));
                     continue;
                 }
             } else {
@@ -149,7 +161,7 @@ namespace tuplex {
                 if(upcast && (obj == Py_True || obj == Py_False))
                     val = obj == Py_True;
                 else {
-                    _badParallelizeObjects.emplace_back(std::make_tuple(i, obj));
+                    _badParallelizeObjects.emplace_back(std::make_tuple(i - previousNumRows, obj));
                     continue;
                 }
             }
@@ -159,6 +171,9 @@ namespace tuplex {
             *rawPtr = *rawPtr + 1;
             numBytesSerialized += sizeof(int64_t);
         }
+
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
 
         partition->unlockWrite();
         partitions.push_back(partition);
@@ -199,6 +214,7 @@ namespace tuplex {
         *rawPtr = 0;
         uint8_t* ptr = (uint8_t*)(rawPtr + 1);
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
@@ -211,13 +227,29 @@ namespace tuplex {
                 // first get how many bytes are required
                 size_t requiredBytes = baseRequiredBytes;
                 if(varLenField) {
-                    for(int j = 0; j < numTupleElements; ++j)
-                        if(typeStr[j] == 's')
-                            requiredBytes += PyUnicode_GET_SIZE(PyTuple_GetItem(obj, j)) + 1; // +1 for '\0'
+                    bool nonConforming = false;
+                    for(int j = 0; j < numTupleElements; ++j) {
+                        if (typeStr[j] == 's') {
+                            auto tupleItem = PyTuple_GetItem(obj, j);
+                            if (PyUnicode_Check(tupleItem)) {
+                                requiredBytes += PyUnicode_GET_SIZE(tupleItem) + 1; // +1 for '\0'
+                            } else {
+                                nonConforming = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (nonConforming) {
+                        _badParallelizeObjects.emplace_back(i, obj);
+                        continue;
+                    }
                 }
 
                 // get new partition if capacity exhausted
                 if(partition->capacity() < numBytesSerialized + requiredBytes) {
+                    auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                    _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                    previousNumExceptions += newExceptions;
                     partition->unlockWrite();
                     partitions.push_back(partition);
                     partition = driver->allocWritablePartition(std::max(allocMinSize, requiredBytes), schema, -1);
@@ -308,6 +340,8 @@ namespace tuplex {
             // (3) is the actual string content (incl. '\0' delimiter)
         }
 
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
         partition->unlockWrite();
         partitions.push_back(partition);
 
@@ -338,12 +372,16 @@ namespace tuplex {
         *rawPtr = 0;
         int64_t* ptr = rawPtr + 1;
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
 
             // check capacity and realloc if necessary get a new partition
             if(partition->capacity() < numBytesSerialized + sizeof(int64_t)) {
+                auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                previousNumExceptions += newExceptions;
                 partition->unlockWrite();
                 partitions.push_back(partition);
                 partition = driver->allocWritablePartition(std::max(sizeof(int64_t), allocMinSize), schema, -1);
@@ -363,6 +401,8 @@ namespace tuplex {
             }
         }
 
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
         partition->unlockWrite();
         partitions.push_back(partition);
 
@@ -391,6 +431,7 @@ namespace tuplex {
         *rawPtr = 0;
         uint8_t* ptr = (uint8_t*)(rawPtr + 1);
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
@@ -409,6 +450,9 @@ namespace tuplex {
 
                 // check capacity and realloc if necessary get a new partition
                 if(partition->capacity() < numBytesSerialized + requiredBytes) {
+                    auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                    _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                    previousNumExceptions += newExceptions;
                     partition->unlockWrite();
                     partitions.push_back(partition);
                     partition = driver->allocWritablePartition(std::max(allocMinSize, requiredBytes), schema, -1);
@@ -437,6 +481,8 @@ namespace tuplex {
             }
         }
 
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
         partition->unlockWrite();
         partitions.push_back(partition);
 
@@ -544,76 +590,57 @@ namespace tuplex {
         *rawPtr = 0;
         uint8_t* ptr = (uint8_t*)(rawPtr + 1);
         size_t numBytesSerialized = 0;
+        size_t previousNumExceptions = _badParallelizeObjects.size();
         for(unsigned i = 0; i < numElements; ++i) {
             auto obj = PyList_GET_ITEM(listObj, i);
 
             // check that it is a dict!
-            if(PyDict_Check(obj)) {
-                auto numDictElements = PyDict_Size(obj);
+            if (PyDict_Check(obj)) {
+                PyObject * tupleObj = PyTuple_New(rowType.parameters().size());
+                int j = 0;
+                for (const auto &c: columns) {
+                    auto item = PyDict_GetItemString(obj, c.c_str());
+                    Py_XINCREF(item);
 
-                // first check, do sizes match?
-                if(numDictElements != rowType.parameters().size())
-                    _badParallelizeObjects.emplace_back(std::make_tuple(i, obj));
-                else {
-                    // same number of elements.
-                    // ==> need to get columns etc. out
-                    bool good = true;
-                    PyObject *tupleObj = PyTuple_New(rowType.parameters().size());
-                    int j = 0;
-                    for(const auto& c : columns) {
-                        auto item = PyDict_GetItemString(obj, c.c_str());
-
-                        // item is borrowed, reference. So incref!
-                        // https://docs.python.org/3/c-api/dict.html#c.PyDict_GetItemString
-                        Py_XINCREF(item);
-
-                        if(!item) {
-                            _badParallelizeObjects.emplace_back(std::make_tuple(i, obj));
-                            good = false;
-                            // set dummy
-                            Py_XINCREF(Py_None);
-                            PyTuple_SET_ITEM(tupleObj, j, Py_None);
-                        } else
-                            PyTuple_SET_ITEM(tupleObj, j, item);
-                        ++j;
+                    if (item) {
+                        PyTuple_SET_ITEM(tupleObj, j, item);
+                    } else {
+                        Py_XINCREF(Py_None);
+                        PyTuple_SET_ITEM(tupleObj, j, Py_None);
                     }
 
-                    // check if all good still or there was an issue with a column...
-                    if(!good)
-                        continue;
-
-                    // all the item are extracted into a tuple.
-                    // ==> convert to row object & check type
-                    Row row = python::pythonToRow(tupleObj);
-
-                    // Py_XDECREF(tupleObj); // remove temporary tupleObject
-
-                    if(row.getRowType() != rowType)
-                        _badParallelizeObjects.emplace_back(std::make_tuple(i, obj));
-                    else {
-                        // write to partition
-
-                        size_t requiredBytes = row.serializedLength();
-                        // check capacity and realloc if necessary get a new partition
-                        if(partition->capacity() < numBytesSerialized + allocMinSize) {
-                            partition->unlockWrite();
-                            partitions.push_back(partition);
-                            partition = driver->allocWritablePartition(allocMinSize, schema, -1);
-                            rawPtr = (int64_t*)partition->lockWriteRaw();
-                            *rawPtr = 0;
-                            ptr = (uint8_t*)(rawPtr + 1);
-                            numBytesSerialized = 0;
-                        }
-
-                        row.serializeToMemory(ptr, partition->capacity());
-                        ptr += requiredBytes;
-                        *rawPtr = *rawPtr + 1;
-                        numBytesSerialized += requiredBytes;
-                    }
+                    ++j;
                 }
+
+                try {
+                    Row row = python::pythonToRow(tupleObj, rowType);
+                    size_t requiredBytes = row.serializedLength();
+                    // check capacity and realloc if necessary get a new partition
+                    if (partition->capacity() < numBytesSerialized + allocMinSize) {
+                        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+                        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
+                        previousNumExceptions += newExceptions;
+                        partition->unlockWrite();
+                        partitions.push_back(partition);
+                        partition = driver->allocWritablePartition(allocMinSize, schema, -1);
+                        rawPtr = (int64_t *) partition->lockWriteRaw();
+                        *rawPtr = 0;
+                        ptr = (uint8_t *) (rawPtr + 1);
+                        numBytesSerialized = 0;
+                    }
+
+                    row.serializeToMemory(ptr, partition->capacity());
+                    ptr += requiredBytes;
+                    *rawPtr = *rawPtr + 1;
+                    numBytesSerialized += requiredBytes;
+                } catch (const std::exception& e) {
+                    _badParallelizeObjects.emplace_back(std::make_tuple(i, tupleObj));
+                }
+
             }
         }
-
+        auto newExceptions = _badParallelizeObjects.size() - previousNumExceptions;
+        _inputPartitionInfo.emplace_back(newExceptions, 0, 0);
         partition->unlockWrite();
         partitions.push_back(partition);
 
@@ -623,7 +650,8 @@ namespace tuplex {
 
     PythonDataSet PythonContext::parallelize(boost::python::list L,
                                              boost::python::object cols,
-                                             boost::python::object schema) {
+                                             boost::python::object schema,
+                                             bool autoUnpack) {
 
         assert(_context);
 
@@ -657,7 +685,7 @@ namespace tuplex {
             majType = inferType(L);
 
         // special case: majType is a dict with strings as key, i.e. perform String Dict unpacking
-        if((majType.isDictionaryType() && majType != python::Type::EMPTYDICT && majType != python::Type::GENERICDICT) && majType.keyType() == python::Type::STRING) {
+        if(autoUnpack && (majType.isDictionaryType() && majType != python::Type::EMPTYDICT && majType != python::Type::GENERICDICT) && majType.keyType() == python::Type::STRING) {
             // automatic unpacking!
             // ==> first check if columns are defined, if not infer columns from sample!
             auto dictTypes = inferColumnsFromDictObjects(L, _context->getOptions().NORMALCASE_THRESHOLD());
@@ -744,8 +772,9 @@ namespace tuplex {
             logger.warn("Found " + pluralize(_badParallelizeObjects.size(), "row") + " not complying with inferred type " + majType.desc());
 
             auto serializedExceptions = serializeExceptions(_badParallelizeObjects, ds->getOperator()->getID());
-            _context->setParallelizePythonObjects(ds, serializedExceptions);
+            _context->setParallelizeInputExceptions(ds, serializedExceptions, _inputPartitionInfo);
             _badParallelizeObjects.clear();
+            _inputPartitionInfo.clear();
         }
 
         // assign dataset to wrapper
@@ -863,6 +892,7 @@ namespace tuplex {
 
     std::vector<Partition *> PythonContext::serializeExceptions(std::vector<std::tuple<size_t, PyObject *>> exceptions, int64_t opID) {
         std::vector<Partition *> partitions;
+        std::vector<size_t> numRows;
 
         Schema schema(Schema::MemoryLayout::ROW, python::Type::makeTupleType({python::Type::STRING}));
         auto driver = _context->getDriver();
@@ -878,7 +908,7 @@ namespace tuplex {
         // (2) is the field containing ecCode
         // (3) is the field containing opID
         // (4) is the field containing pickledObjectSize
-        // (5) is the field containing pickledObject
+        // (5) is the field containing pickledObjects
         for(auto &exception : exceptions) {
             auto rowNum = std::get<0>(exception);
             auto pyObj = std::get<1>(exception);
@@ -888,6 +918,8 @@ namespace tuplex {
             size_t requiredBytes = sizeof(int64_t) * 4 + pickledObjectSize;
 
             if (partition->capacity() < numBytesSerialized + requiredBytes) {
+                numRows.push_back(*rawPtr);
+                partition->setNumRows(*rawPtr);
                 partition->unlockWrite();
                 partitions.push_back(partition);
                 partition = driver->allocWritablePartition(std::max(allocMinSize, requiredBytes), schema, -1);
@@ -907,9 +939,40 @@ namespace tuplex {
             numBytesSerialized += requiredBytes;
         }
 
+        numRows.push_back(*rawPtr);
         partition->unlockWrite();
         partitions.push_back(partition);
 
+        //Use UUID instead of sorting
+        int eInd = 0;
+        int eOff = 0;
+        for (int i = 0; i < _inputPartitionInfo.size(); ++i) {
+            auto numExceptions = std::get<0>(_inputPartitionInfo[i]);
+            _inputPartitionInfo[i] = std::make_tuple(numExceptions, eInd, eOff);
+            while (eOff + numExceptions >= numRows[eInd]) {
+                numExceptions -= numRows[eInd] - eOff;
+                eOff = 0;
+                eInd++;
+            }
+            eOff += numExceptions;
+        }
+
+//        for (int i = 0; i < _inputPartitionInfo.size(); ++i) {
+//            auto eRows = partitions[eInd]->getNumRows();
+//
+//            auto numExceptions = std::get<0>(_inputPartitionInfo[i]);
+//            if (numExceptions > 0) {
+//                _inputPartitionInfo[i] = std::make_tuple(numExceptions, eInd, eRows - curCapacity);
+//                while (curCapacity < numExceptions) {
+//                    numExceptions -= curCapacity;
+//                    eInd++;
+//                    curCapacity = eRows;
+//                }
+//                curCapacity -= numExceptions;
+//            } else {
+//                _inputPartitionInfo[i] = std::make_tuple(0, 0, 0);
+//            }
+//        }
         return partitions;
     }
 
@@ -948,109 +1011,50 @@ namespace tuplex {
         auto& logger = Logger::instance().logger("python");
 
         auto numSample = sampleSize(L);
-
-#warning "use here and for other sample based inferences a global infer method!"
-        // count occurences of columns, decide on heuristic which are normal and which should become exceptions
-        unordered_map<string, size_t> counts;
-        unordered_map<string, vector<PyObject*>> cols;
-        size_t num_dicts = 0;
         PyObject* listObj = L.ptr(); assert(listObj); assert(PyList_Check(listObj));
-        for(int i = 0; i < numSample; ++i) {
+
+        std::unordered_map<std::string, std::vector<PyObject*>> columns;
+        for (int i = 0; i < numSample; ++i) {
             auto item = PyList_GET_ITEM(listObj, i);
 
-            Py_INCREF(item); // borrowed reference?
+            Py_INCREF(item);
 
-            if(PyDict_Check(item)) {
-                num_dicts++;
-
-                // go through keys...
+            if (PyDict_Check(item)) {
                 PyObject *key = nullptr, *val = nullptr;
-                Py_ssize_t pos = 0; // must be initialized to 0 to start iteration, however internal iterator variable. Don't use semantically.
-                while(PyDict_Next(item, &pos, &key, &val)) {
-                    // check if key is string
-                    if(PyUnicode_Check(key)) {
+                Py_ssize_t pos = 0;
+                while (PyDict_Next(item, &pos, &key, &val)) {
+                    if (PyUnicode_Check(key)) {
                         auto skey = python::PyString_AsString(key);
-                        auto it = counts.find(skey);
-                        if(it == counts.end()) {
-                            counts[skey] = 0;
-                            cols[skey] = std::vector<PyObject*>();
+                        auto it = columns.find(skey);
+                        if (it == columns.end()) {
+                            columns[skey] = std::vector<PyObject*>();
                         }
-                        counts[skey]++;
-                        Py_XINCREF(val); // val is borrowed according to https://docs.python.org/3/c-api/dict.html#c.PyDict_Next
-                        cols[skey].push_back(val);
+                        Py_XINCREF(val);
+                        columns[skey].push_back(val);
                     }
                 }
             }
         }
 
-        // normal case decision time!
-        vector<string> columns;
-        for(const auto& keyval : counts) {
-            // met threshold?
-            if(keyval.second >= ceil(normalThreshold * num_dicts))
-                columns.emplace_back(keyval.first);
-        }
-
-        // infer for each of the columns the most likely type!
-        unordered_map<string, python::Type> m;
-        for(const auto& c : columns) {
-            PyObject* listColObj = PyList_New(cols[c].size());
-            for(int i = 0; i < cols[c].size(); ++i) {
-                Py_XINCREF(cols[c][i]);
-                PyList_SET_ITEM(listColObj, i, cols[c][i]);
+        std::unordered_map<std::string, python::Type> m;
+        for (const auto &c : columns) {
+            PyObject *listColObj = PyList_New(numSample);
+            int i = 0;
+            while (i < columns[c.first].size()) {
+                Py_XINCREF(columns[c.first][i]);
+                PyList_SET_ITEM(listColObj, i, columns[c.first][i]);
+                ++i;
             }
-
-            // hand-off to infer type function
-            // ==> note: boost::python::handle transfers ownership!
+            while (i < numSample) {
+                PyList_SET_ITEM(listColObj, i, Py_None);
+                ++i;
+            }
             auto type = inferType(boost::python::list(boost::python::handle<>(listColObj)));
-
-            m[c] = type;
-        }
-
-
-        // special case: no inference was possible ==> take as backup the first row as schema. warn message.
-        if(m.empty()) {
-            logger.warn("could not infer column names from sample according to threshold. Defaulting to schema defined by first row.");
-
-            PyObject *item = nullptr;
-            for(int i = 0; i < PyList_Size(listObj); ++i) {
-                item = PyList_GET_ITEM(listObj, i);
-                if(PyDict_Check(item)) {
-
-                    // check that keys are all strings
-                    auto keys = PyDict_Keys(item);
-                    assert(PyList_Check(keys));
-                    bool all_strs = true;
-                    for(int j = 0; j < PyList_Size(keys); ++j)
-                        if(PyList_GET_ITEM(keys, j)->ob_type != &PyUnicode_Type)
-                            all_strs = false;
-                    if(all_strs)
-                        break;
-                }
-                item = nullptr;
-            }
-
-            if(!item || !PyDict_Check(item))
-                throw std::runtime_error("type inference from dictionary objects failed. Please provide manually a schema.");
-
-            // fetch all values and
-            auto items = PyDict_Items(item);
-            assert(PyList_Check(items));
-            for(int j = 0; j < PyList_Size(items); ++j) {
-                auto keyval = PyList_GET_ITEM(items, j);
-                assert(PyTuple_Check(keyval));
-                assert(PyTuple_Size(keyval) == 2);
-                // just use directly the type...
-                auto key = PyTuple_GET_ITEM(keyval, 0);
-                auto val = PyTuple_GET_ITEM(keyval, 1);
-                assert(PyUnicode_Check(key));
-                m[python::PyString_AsString(key)] = python::mapPythonClassToTuplexType(val);
-            }
+            m[c.first] = type;
         }
 
         Logger::instance().flushToPython();
 
-        // return map
         return m;
     }
 

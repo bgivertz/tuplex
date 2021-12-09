@@ -123,6 +123,9 @@ namespace tuplex {
         // bad parallelize objects, i.e those who don't fit the inferred type
         std::vector<std::tuple<size_t, PyObject *>> _badParallelizeObjects;
 
+        // Tuple of (numExceptions, offset, size)
+        std::vector<std::tuple<size_t, size_t, size_t>> _inputPartitionInfo;
+
         inline PythonDataSet makeError(const std::string& message) {
             PythonDataSet pds;
             pds.wrap(&_context->makeError(message));
@@ -161,10 +164,13 @@ namespace tuplex {
          * @param L python list object
          * @param cols python list object with column names
          * @param schema python object to define a schema
+         * @param autoUnpack bool to unpack dictionaries with string keys
          * @return PythonDataSet wrapper around internal DataSet class
          */
-        PythonDataSet parallelize(boost::python::list L, boost::python::object cols = boost::python::object(),
-                                  boost::python::object schema = boost::python::object());
+        PythonDataSet parallelize(boost::python::list L,
+                                  boost::python::object cols = boost::python::object(),
+                                  boost::python::object schema = boost::python::object(),
+                                  bool autoUnpack = true);
 
         /*!
          * reads one (or multiple) csv files into memory

@@ -228,7 +228,7 @@ namespace tuplex {
 
         // needs to be put into separate list of python objects...
         // save index as well to merge back in order.
-        _py_nonconfirming.push_back(std::make_tuple(_rowNumber, out_row));
+        _py_nonconfirming.push_back(std::make_tuple(_rowNumber - _numUnresolved, out_row));
     }
 
     int64_t ResolveTask::mergeNormalRow(const uint8_t *buf, int64_t bufSize) {
@@ -299,7 +299,7 @@ default:
     void ResolveTask::emitNormalRows() {
 
         auto& logger = Logger::instance().logger("resolve task");
-        // logger.debug("emitting " + std::to_string(_currentRowNumber - _rowNumber) + " normal rows before current resolved row");
+//         logger.debug("emitting " + std::to_string(_currentRowNumber - _rowNumber) + " normal rows before current resolved row");
 
         // copy as many rows until current row number is reached...
         // EDIT: OR normal rows are exhausted??
@@ -662,6 +662,7 @@ default:
 
         // fallback 3: still exception? save...
         if(resCode == -1) {
+            _numUnresolved++;
             exceptionCallback(ecCode, operatorID, _rowNumber, ebuf, eSize);
         }
     }
@@ -697,7 +698,7 @@ default:
         }
 
         // abort if no exceptions!
-        if(_exceptions.empty())
+        if(_exceptions.empty() && _inputExceptions.empty())
             return;
 
         // special case: no functor & no python pipeline functor given
@@ -770,6 +771,35 @@ default:
                 partition->invalidate();
             }
 
+            if (_inputNum > 0) {
+                auto partition = _inputExceptions[_inputInd];
+                const uint8_t *ptr = partition->lockRaw();
+                int64_t numRows = *((int64_t *) ptr);
+                ptr += sizeof(int64_t);
+
+                for (int i = 0; i < _inputNum; ++i) {
+                    if (numRows == 0) {
+                        partition->unlock();
+                        partition->invalidate();
+                        partition = _inputExceptions[_inputInd + 1];
+                        _inputInd++;
+                    }
+
+                    const uint8_t *ebuf = nullptr;
+                    int64_t ecCode = -1, operatorID = -1;
+                    size_t eSize = 0;
+                    auto delta = deserializeExceptionFromMemory(ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                                &eSize);
+
+                    processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                    ptr += delta;
+                    _rowNumber++;
+
+                    numRows--;
+                }
+
+                partition->unlock();
+            }
             // merging is done, unlock the last partition & copy the others over.
             unlockAll();
 
@@ -802,8 +832,6 @@ default:
 
         // send status update, i.e. if exceptions were resolved then it's time to reflect this!
         // ==> i.e. send here delta of resolved rows!
-        // ==> if resolvers throw exceptions, send here too what happened (in terms of delta)
-        // + a traceback
         sendStatusToHistoryServer();
     }
 
@@ -829,37 +857,129 @@ default:
             // merge exceptions with normal rows after calling slow code over them...
             // basic idea is go over all exception partitions, execute row wise the resolution function
             // and merge the result back to the partitions
-            for(auto partition : _exceptions) {
-                const uint8_t* ptr = partition->lockRaw();
-                int64_t numRows = *((int64_t*)ptr); ptr += sizeof(int64_t);
+            size_t eInd;
+            const uint8_t *ePtr = nullptr;
+            int64_t eRemaining;
+            if (_exceptions.size() > 0) {
+                eInd = 0;
+                ePtr = _exceptions[eInd]->lockRaw();
+                eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+            }
 
-                for(int i = 0; i < numRows; ++i) {
-
-                    // old
-                    // _currentRowNumber = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t ecCode = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t operatorID = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t eSize = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-
-                    const uint8_t *ebuf = nullptr;
-                    int64_t ecCode = -1, operatorID = -1;
-                    size_t eSize = 0;
-                    auto delta = deserializeExceptionFromMemory(ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
-                                                                &eSize);
-
-                    processExceptionRow(ecCode, operatorID, ebuf, eSize);
-                    ptr += delta;
-
-                    // logger.debug("processing potential output row #" + std::to_string(_currentRowNumber));
-
-                    // only inc row number if exception occurred or row was written...
-                    _rowNumber++;
+            size_t iInd;
+            const uint8_t *iPtr = nullptr;
+            int64_t iRemaining;
+            if (_inputNum > 0) {
+                iInd = _inputInd;
+                iPtr = _inputExceptions[_inputInd]->lockRaw();
+                auto nRows = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                iRemaining = nRows - _inputOff;
+                for (int i = 0; i < _inputOff; ++i) {
+                    int64_t* ib = (int64_t*)iPtr;
+                    auto eSize = ib[3];
+                    iPtr += eSize + 4*sizeof(int64_t);
                 }
-                partition->unlock();
+            }
+
+            size_t inputProcessed = 0;
+            const uint8_t **ptr;
+            while (ePtr && iPtr) {
+                auto eRowInd = *((int64_t *) ePtr);
+                auto iRowInd = *((int64_t *) iPtr);
+                bool isInput = false;
+                if (eRowInd + inputProcessed < iRowInd) {
+                    ptr = &ePtr;
+                    eRemaining--;
+                } else {
+                    inputProcessed++;
+                    isInput = true;
+                    ptr = &iPtr;
+                    iRemaining--;
+                    _inputNum--;
+                }
+
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(*ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                if (!isInput)
+                    _currentRowNumber += inputProcessed;
+
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                *ptr += delta;
+                _rowNumber++;
+
+                if (eRemaining == 0) {
+                    _exceptions[eInd]->unlock();
+                    _exceptions[eInd]->invalidate();
+                    eInd++;
+                    if (eInd < _exceptions.size()) {
+                        ePtr = _exceptions[eInd]->lockRaw();
+                        eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+                    } else {
+                        ePtr = nullptr;
+                    }
+                }
+                if (iRemaining == 0 || _inputNum == 0) {
+                    _inputExceptions[iInd]->unlock();
+                    iInd++;
+                    if (iInd < _inputExceptions.size() && _inputNum > 0) {
+                        iPtr = _inputExceptions[iInd]->lockRaw();
+                        iRemaining = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                    } else {
+                        iPtr = nullptr;
+                    }
+                }
+            }
+
+            while (ePtr) {
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(ePtr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                _currentRowNumber += inputProcessed;
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                ePtr += delta;
+                _rowNumber++;
+
+                eRemaining--;
+                if (eRemaining == 0) {
+                    _exceptions[eInd]->unlock();
+                    _exceptions[eInd]->invalidate();
+                    eInd++;
+                    if (eInd < _exceptions.size()) {
+                        ePtr = _exceptions[eInd]->lockRaw();
+                        eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+                    } else {
+                        ePtr = nullptr;
+                    }
+                }
+            }
+
+            while (iPtr) {
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(iPtr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                iPtr += delta;
+                _rowNumber++;
+
+                iRemaining--;
+                _inputNum--;
+                if (iRemaining == 0 || _inputNum == 0) {
+                    _inputExceptions[iInd]->unlock();
+                    iInd++;
+                    if (iInd < _inputExceptions.size() && _inputNum > 0) {
+                        iPtr = _inputExceptions[iInd]->lockRaw();
+                        iRemaining = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                    } else {
+                        iPtr = nullptr;
+                    }
+                }
             }
 
             // add remaining normal rows & partitions to merged partitions
@@ -897,32 +1017,121 @@ default:
             // merge exceptions with normal rows after calling slow code over them...
             // basic idea is go over all exception partitions, execute row wise the resolution function
             // and merge the result back to the partitions
-            for(auto partition : _exceptions) {
-                const uint8_t* ptr = partition->lockRaw();
-                int64_t numRows = *((int64_t*)ptr); ptr += sizeof(int64_t);
+            size_t eInd;
+            const uint8_t *ePtr = nullptr;
+            int64_t eRemaining;
+            if (_exceptions.size() > 0) {
+                eInd = 0;
+                ePtr = _exceptions[eInd]->lockRaw();
+                eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+            }
 
-                for(int i = 0; i < numRows; ++i) {
-
-                    // old
-                    // _currentRowNumber = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t ecCode = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t operatorID = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t eSize = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    const uint8_t *ebuf = nullptr;
-                    int64_t ecCode = -1, operatorID = -1;
-                    size_t eSize = 0;
-                    auto delta = deserializeExceptionFromMemory(ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
-                                                                &eSize);
-                    processExceptionRow(ecCode, operatorID, ebuf, eSize);
-                    ptr += delta;
-                    // old
-                    // ptr += eSize;
+            size_t iInd;
+            const uint8_t *iPtr = nullptr;
+            int64_t iRemaining;
+            if (_inputNum > 0) {
+                iInd = _inputInd;
+                iPtr = _inputExceptions[_inputInd]->lockRaw();
+                auto nRows = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                for (int i = 0; i < _inputOff; ++i) {
+                    int64_t* ib = (int64_t*)iPtr;
+                    auto eSize = ib[3];
+                    iPtr += eSize + 4*sizeof(int64_t);
                 }
-                partition->unlock();
+                iRemaining = nRows - _inputOff;
+            }
+
+            const uint8_t **ptr;
+            while (ePtr && iPtr) {
+                auto eRowInd = *((int64_t *) ePtr);
+                auto iRowInd = *((int64_t *) iPtr);
+                if (eRowInd < iRowInd) {
+                    ptr = &ePtr;
+                    eRemaining--;
+                } else {
+                    ptr = &iPtr;
+                    iRemaining--;
+                    _inputNum--;
+                }
+
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(*ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                *ptr += delta;
+                _rowNumber++;
+
+                if (eRemaining == 0) {
+                    _exceptions[eInd]->unlock();
+                    _exceptions[eInd]->invalidate();
+                    eInd++;
+                    if (eInd < _exceptions.size()) {
+                        ePtr = _exceptions[eInd]->lockRaw();
+                        eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+                    } else {
+                        ePtr = nullptr;
+                    }
+                }
+                if (iRemaining == 0 || _inputNum == 0) {
+                    _inputExceptions[iInd]->unlock();
+                    iInd++;
+                    if (iInd < _inputExceptions.size() && _inputNum > 0) {
+                        iPtr = _inputExceptions[iInd]->lockRaw();
+                        iRemaining = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                    } else {
+                        iPtr = nullptr;
+                    }
+                }
+            }
+
+            while (ePtr) {
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(ePtr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                ePtr += delta;
+                _rowNumber++;
+
+                eRemaining--;
+                if (eRemaining == 0) {
+                    _exceptions[eInd]->unlock();
+                    _exceptions[eInd]->invalidate();
+                    eInd++;
+                    if (eInd < _exceptions.size()) {
+                        ePtr = _exceptions[eInd]->lockRaw();
+                        eRemaining = *((int64_t *) ePtr); ePtr += sizeof(int64_t);
+                    } else {
+                        ePtr = nullptr;
+                    }
+                }
+            }
+
+            while (iPtr) {
+                const uint8_t *ebuf = nullptr;
+                int64_t ecCode = -1, operatorID = -1;
+                size_t eSize = 0;
+                auto delta = deserializeExceptionFromMemory(iPtr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
+                                                            &eSize);
+                processExceptionRow(ecCode, operatorID, ebuf, eSize);
+                iPtr += delta;
+                _rowNumber++;
+
+                iRemaining--;
+                _inputNum--;
+                if (iRemaining == 0 || _inputNum == 0) {
+                    _inputExceptions[iInd]->unlock();
+                    iInd++;
+                    if (iInd < _inputExceptions.size() && _inputNum > 0) {
+                        iPtr = _inputExceptions[iInd]->lockRaw();
+                        iRemaining = *((int64_t *) iPtr); iPtr += sizeof(int64_t);
+                    } else {
+                        iPtr = nullptr;
+                    }
+                }
             }
 
 

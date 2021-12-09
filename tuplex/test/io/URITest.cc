@@ -11,6 +11,17 @@
 #include <gtest/gtest.h>
 #include <VirtualFileSystem.h>
 #include <URI.h>
+#include <Context.h>
+#include "../core/TestUtils.h"
+
+TEST(URI, FileOutput) {
+    using namespace tuplex;
+
+    auto opts = microTestOptions();
+    Context c(opts);
+
+    c.parallelize({Row(1), Row(2), Row(3)}).tocsv("my_new_output");
+}
 
 TEST(URI, parent) {
     // test parent function for various URIs

@@ -107,9 +107,12 @@ namespace tuplex {
          * set python objects, i.e. rows that could come from a parallelize operator.
          * @param pythonObjects
          */
-        void setPythonObjects(const std::vector<Partition *> pythonObjects) { _pythonObjects = pythonObjects; }
+        void setPythonObjects(const std::vector<Partition *>& pythonObjects) { _pythonObjects = pythonObjects; }
 
         std::vector<Partition *> pythonObjects() { return _pythonObjects; }
+
+        void setInputPartitionInfo(std::vector<std::tuple<size_t, size_t, size_t>> info) { _inputPartitionInfo = info; }
+        std::vector<std::tuple<size_t, size_t, size_t>> inputPartitionInfo() { return _inputPartitionInfo; }
 
         /*!
          * sets maximum number of rows this pipeline will produce
@@ -466,6 +469,7 @@ namespace tuplex {
         // unresolved exceptions. Important i.e. when no IO interleave is used...
         std::vector<Partition*> _unresolved_exceptions;
         std::vector<Partition*> _pythonObjects;
+        std::vector<std::tuple<size_t, size_t, size_t>> _inputPartitionInfo;
 
 
         // for hash output, the key and bucket type

@@ -30,6 +30,8 @@ namespace tuplex {
 
             llvm::Function *createFunction();
 
+            llvm::Function *createFunctionWithInputExceptions();
+
             python::Type _inputRowType; //@TODO: make this private??
 
             std::string _intermediateCallbackName;
@@ -48,7 +50,7 @@ namespace tuplex {
              * @return
              */
             inline llvm::Value *arg(const std::string &name) {
-                assert(_args.size() == 6);
+//                assert(_args.size() == 6);
                 auto it = _args.find(name);
                 if (it == _args.end())
                     throw std::runtime_error("unknown arg " + name + " requested");

@@ -18,8 +18,8 @@ namespace tuplex {
     class ParallelizeOperator : public LogicalOperator {
 
         std::vector<Partition*> _partitions; // data, conforming to majority type
-        std::vector<Partition*> _generalCasePartitions;
-        std::vector<Partition*> _pythonObjects;
+        std::vector<Partition*> _inputExceptions;
+        std::vector<std::tuple<size_t, size_t, size_t>> _inputPartitionInfo;
         std::vector<std::string> _columnNames;
 
         std::vector<Row> _sample; // sample, not necessary conforming to one type
@@ -48,11 +48,11 @@ namespace tuplex {
          */
         std::vector<tuplex::Partition*> getPartitions();
 
-        void setGeneralCasePartitions(std::vector<tuplex::Partition*> generalCasePartitions) { _generalCasePartitions = generalCasePartitions; }
-        std::vector<tuplex::Partition*> getGeneralCasePartitions() { return _generalCasePartitions; }
+        void setInputExceptions(const std::vector<Partition *>& exceptions) { _inputExceptions = exceptions; }
+        std::vector<Partition *> getInputExceptions() { return _inputExceptions; }
 
-        void setPythonObjects(std::vector<Partition *> pythonObjects) { _pythonObjects = pythonObjects; }
-        std::vector<Partition *> getPythonObjects() { return _pythonObjects; }
+        void setInputPartitionInfo(const std::vector<std::tuple<size_t, size_t, size_t>>& info) { _inputPartitionInfo = info; }
+        std::vector<std::tuple<size_t, size_t, size_t>> getInputPartitionInfo() { return _inputPartitionInfo; }
 
         Schema getInputSchema() const override { return getOutputSchema(); }
 

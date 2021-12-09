@@ -17,6 +17,8 @@
 #include <CSVUtils.h>
 #include <VirtualFileSystem.h>
 #include <parser/Parser.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // need for these tests a running python interpreter, so spin it up
 class WrapperTest : public ::testing::Test {
@@ -50,7 +52,227 @@ TEST_F(WrapperTest, LambdaBackend) {
 }
 #endif
 
+TEST_F(WrapperTest, OnlyInput) {
+    using namespace tuplex;
+
+    PythonContext c("c", "", "{\"tuplex.webui.enable\": \"False\", \"driverMemory\": \"8MB\", \"partitionSize\": \"256KB\", \"tuplex.optimizer.mergeExceptionsInOrder\": \"True\"}");
+
+    auto *listObj = PyList_New(40000);
+    for (int i = 0; i < 40000; ++i) {
+        if (i % 100 == 0) {
+            PyList_SET_ITEM(listObj, i, python::PyString_FromString(std::to_string(i).c_str()));
+        } else {
+            PyList_SET_ITEM(listObj, i, PyLong_FromLong(i));
+        }
+    }
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list).map("lambda x: x", "").collect();
+        auto resObj = res.ptr();
+
+    }
+
+}
+
+TEST_F(WrapperTest, NowFaill) {
+    using namespace tuplex;
+    PythonContext c("c", "", "{\"tuplex.webui.enable\": \"False\", \"driverMemory\": \"8MB\", \"partitionSize\": \"40B\", \"executorCount\": \"0\", \"tuplex.optimizer.mergeExceptionsInOrder\": \"True\"}");
+
+    std::unordered_set<int> sampledInds;
+    while (sampledInds.size() < 40) {
+        int val = rand() % 100;
+        sampledInds.insert(val);
+    }
+
+    auto *listObj = PyList_New(100);
+    for (int i = 0; i < 100; ++i) {
+        PyList_SET_ITEM(listObj, i, PyLong_FromLong(i + 1));
+    }
+
+    for (auto elt : sampledInds) {
+        if (rand() % 2 == 0) {
+            PyList_SET_ITEM(listObj, elt, PyLong_FromLong(0));
+        } else {
+            PyList_SET_ITEM(listObj, elt, python::PyString_FromString(std::to_string(elt).c_str()));
+        }
+    }
+
+
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list).map("lambda x: 1 / x if x == 0 else x", "").resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: x", "", ce).collect();
+        auto resObj = res.ptr();
+    }
+}
+
+TEST_F(WrapperTest, FailingOneNow) {
+    using namespace tuplex;
+
+    PythonContext c("c", "", "{\"tuplex.webui.enable\": \"False\", \"driverMemory\": \"8MB\", \"partitionSize\": \"40B\", \"tuplex.optimizer.mergeExceptionsInOrder\": \"True\"}");
+
+    auto *listObj = PyList_New(15);
+    PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
+    PyList_SET_ITEM(listObj, 1, PyLong_FromLong(2));
+    PyList_SET_ITEM(listObj, 2, python::PyString_FromString("a"));
+    PyList_SET_ITEM(listObj, 3, PyLong_FromLong(0));
+    PyList_SET_ITEM(listObj, 4, PyLong_FromLong(5));
+    PyList_SET_ITEM(listObj, 5, PyLong_FromLong(6));
+    PyList_SET_ITEM(listObj, 6, PyLong_FromLong(7));
+    PyList_SET_ITEM(listObj, 7, python::PyString_FromString("b"));
+    PyList_SET_ITEM(listObj, 8, PyLong_FromLong(0));
+    PyList_SET_ITEM(listObj, 9, PyLong_FromLong(10));
+    PyList_SET_ITEM(listObj, 10, PyLong_FromLong(11));
+    PyList_SET_ITEM(listObj, 11, PyLong_FromLong(12));
+    PyList_SET_ITEM(listObj, 12, python::PyString_FromString("c"));
+    PyList_SET_ITEM(listObj, 13, PyLong_FromLong(0));
+    PyList_SET_ITEM(listObj, 14, PyLong_FromLong(15));
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list).map("lambda x: 1 / x if x == 0 else x", "").resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: -1", "", ce).collect();
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+
+}
+
 // Important detail: RAII of boost python requires call to all boost::python destructors before closing the interpreter.
+TEST_F(WrapperTest, OnlyRuntime) {
+    using namespace tuplex;
+
+    PythonContext c("c", "", "{\"tuplex.optimizer.mergeExceptionsInOrder\":\"True\"}");
+
+    auto *listObj = PyList_New(4);
+    PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
+    PyList_SET_ITEM(listObj, 1, PyLong_FromLong(0));
+    PyList_SET_ITEM(listObj, 2, PyLong_FromLong(0));
+    PyList_SET_ITEM(listObj, 3, PyLong_FromLong(4));
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list).map("lambda x: 1 / x", "").resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: -1", "", ce).collect();
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+
+}
+
+TEST_F(WrapperTest, NormalCaseVarLength) {
+    using namespace tuplex;
+    PythonContext c("c", "", "{\"tuplex.partitionSize\":\"256KB\", \"tuplex.optimizer.mergeExceptionsInOrder\":\"True\", \"tuplex.executorCount\":\"0\"}");
+
+    PyObject *listObj = PyList_New(4);
+    PyObject *tupleObj1 = PyTuple_New(2);
+    PyTuple_SET_ITEM(tupleObj1, 0, python::PyString_FromString("a"));
+    PyTuple_SET_ITEM(tupleObj1, 1, python::PyString_FromString("a"));
+
+    PyObject *tupleObj2 = PyTuple_New(2);
+    PyTuple_SET_ITEM(tupleObj2, 0, python::PyString_FromString("b"));
+    PyTuple_SET_ITEM(tupleObj2, 1, python::PyString_FromString("a"));
+
+    PyObject *tupleObj3 = PyTuple_New(2);
+    PyTuple_SET_ITEM(tupleObj3, 0, python::PyString_FromString("c"));
+    PyTuple_SET_ITEM(tupleObj3, 1, python::PyString_FromString("a"));
+
+    PyObject *tupleObj4 = PyTuple_New(2);
+    PyTuple_SET_ITEM(tupleObj4, 0, python::PyString_FromString("a"));
+    PyTuple_SET_ITEM(tupleObj4, 1, python::PyString_FromString("a"));
+
+    PyList_SetItem(listObj, 0, tupleObj1);
+    PyList_SetItem(listObj, 1, tupleObj2);
+    PyList_SetItem(listObj, 2, tupleObj3);
+    PyList_SetItem(listObj, 3, tupleObj4);
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto res = c.parallelize(list).collect();
+
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+
+}
+
+TEST_F(WrapperTest, DebugMyFeatur100) {
+    using namespace tuplex;
+
+    PythonContext c("c", "", "{\"tuplex.partitionSize\":\"256KB\", \"tuplex.optimizer.mergeExceptionsInOrder\":\"True\", \"tuplex.executorCount\":\"0\"}");
+
+    PyObject *listObj = PyList_New(15);
+    PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
+    PyList_SET_ITEM(listObj, 1, PyLong_FromLong(2));
+    PyList_SET_ITEM(listObj, 2, PyLong_FromLong(-1));
+    PyList_SET_ITEM(listObj, 3, python::PyString_FromString("E1"));
+    PyList_SET_ITEM(listObj, 4, PyLong_FromLong(5));
+    PyList_SET_ITEM(listObj, 5, PyLong_FromLong(6));
+    PyList_SET_ITEM(listObj, 6, PyLong_FromLong(7));
+    PyList_SET_ITEM(listObj, 7, PyLong_FromLong(-2));
+    PyList_SET_ITEM(listObj, 8, python::PyString_FromString("E2"));
+    PyList_SET_ITEM(listObj, 9, PyLong_FromLong(10));
+    PyList_SET_ITEM(listObj, 10, PyLong_FromLong(11));
+    PyList_SET_ITEM(listObj, 11, PyLong_FromLong(12));
+    PyList_SET_ITEM(listObj, 12, PyLong_FromLong(-3));
+    PyList_SET_ITEM(listObj, 13, python::PyString_FromString("E3"));
+    PyList_SET_ITEM(listObj, 14, PyLong_FromLong(15));
+
+    // [1, -1, "E", 4, 5, 6, -1, "E", 9, 10, 11, -1, "E", 14, 15]
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list)
+                .map("lambda x: 1 // (x - x) if x == -1 or x == -2 or x == -3 else x", "")
+                .resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: 1 // (x - x) if x == -2 else x", "", ce).collect();
+
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+}
+
+TEST_F(WrapperTest, DebugMyFeatur) {
+    using namespace tuplex;
+
+    PythonContext c("c", "", "{\"tuplex.partitionSize\":\"256KB\", \"tuplex.optimizer.mergeExceptionsInOrder\":\"True\", \"tuplex.executorCount\":\"0\"}");
+
+    PyObject *listObj = PyList_New(15);
+    for (int i = 0; i < 15; ++i) {
+        if (i == 1 || i == 6 || i == 11) {
+            PyList_SET_ITEM(listObj, i, PyLong_FromLong(0));
+        } else if (i == 2 || i == 7 || i == 12) {
+            PyList_SET_ITEM(listObj, i, python::PyString_FromString("E"));
+        } else {
+            PyList_SET_ITEM(listObj, i, PyLong_FromLong(i + 1));
+        }
+    }
+
+    // [1, -1, "E", 4, 5, 6, -1, "E", 9, 10, 11, -1, "E", 14, 15]
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ce = PyDict_New();
+        auto res = c.parallelize(list).map("lambda x: 1 / x if x == 0 else x", "").resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: -1", "", ce).collect();
+
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+}
 
 TEST_F(WrapperTest, StringParallelize) {
     using namespace tuplex;
@@ -78,8 +300,84 @@ TEST_F(WrapperTest, StringParallelize) {
     }
 }
 
+TEST_F(WrapperTest, DictionaryDebug2) {
+    using namespace tuplex;
+
+    PythonContext c("");
+
+    PyObject * dictObj1 = PyDict_New();
+    PyDict_SetItem(dictObj1, python::PyString_FromString("a"), PyLong_FromLong(1));
+    PyDict_SetItem(dictObj1, python::PyString_FromString("b"), PyLong_FromLong(1));
+
+    PyObject * dictObj2 = PyDict_New();
+    PyDict_SetItem(dictObj2, python::PyString_FromString("a"), PyLong_FromLong(2));
+
+    PyObject * dictObj3 = PyDict_New();
+    PyDict_SetItem(dictObj3, python::PyString_FromString("a"), PyLong_FromLong(3));
+    PyDict_SetItem(dictObj3, python::PyString_FromString("b"), PyLong_FromLong(3));
+
+    PyObject * dictObj4 = PyDict_New();
+    PyDict_SetItem(dictObj4, python::PyString_FromString("a"), PyLong_FromLong(4));
+
+    PyObject *listObj = PyList_New(4);
+    PyList_SET_ITEM(listObj, 0, dictObj1);
+    PyList_SET_ITEM(listObj, 1, dictObj2);
+    PyList_SET_ITEM(listObj, 2, dictObj3);
+    PyList_SET_ITEM(listObj, 3, dictObj4);
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto res = c.parallelize(list).map("lambda x: x", "").collect();
+
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+
+}
+
+TEST_F(WrapperTest, DictionaryDebug) {
+    using namespace tuplex;
+
+    PythonContext c("");
+
+    PyObject * dictObj1 = PyDict_New();
+    PyDict_SetItem(dictObj1, python::PyString_FromString("a"), PyLong_FromLong(1));
+    PyDict_SetItem(dictObj1, python::PyString_FromString("b"), PyLong_FromLong(1));
+    PyDict_SetItem(dictObj1, python::PyString_FromString("c"), PyLong_FromLong(1));
+
+    PyObject * dictObj2 = PyDict_New();
+    PyDict_SetItem(dictObj2, python::PyString_FromString("a"), PyLong_FromLong(2));
+
+    PyObject * dictObj3 = PyDict_New();
+    PyDict_SetItem(dictObj3, python::PyString_FromString("a"), PyLong_FromLong(3));
+    PyDict_SetItem(dictObj3, python::PyString_FromString("b"), PyLong_FromLong(3));
+
+    PyObject *listObj = PyList_New(3);
+    PyList_SET_ITEM(listObj, 0, dictObj1);
+    PyList_SET_ITEM(listObj, 1, dictObj2);
+    PyList_SET_ITEM(listObj, 2, dictObj3);
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto res = c.parallelize(list).map("lambda x: x", "").collect();
+
+        auto resObj = res.ptr();
+
+        PyObject_Print(resObj, stdout, 0);
+    }
+
+}
+
 TEST_F(WrapperTest, DictionaryParallelize) {
     using namespace tuplex;
+
+    // c.parallelize(data, autoUnpack=True)
+
+    // autoUnpack=True
+    // every dictionary entry gets its own column (if strings)
 
     PythonContext c("");
 
@@ -2259,18 +2557,18 @@ TEST_F(WrapperTest, MixedTypesIsWithNone) {
 
     PythonContext c("python", "",  "{\"tuplex.webui.enable\":\"False\", \"tuplex.optimizer.mergeExceptionsInOrder\":\"True\"}");
 
-    // use this test data as soon as parallelize(...) supports exception model properly...
-    //    PyObject *listObj = PyList_New(8);
-    //    PyList_SetItem(listObj, 0, Py_None);
-    //    PyList_SetItem(listObj, 1, PyLong_FromLong(255));
-    //    PyList_SetItem(listObj, 2, PyLong_FromLong(400));
-    //    PyList_SetItem(listObj, 3, Py_True);
-    //    PyList_SetItem(listObj, 4, PyFloat_FromDouble(2.7));
-    //    PyList_SetItem(listObj, 5, PyTuple_New(0)); // empty tuple
-    //    PyList_SetItem(listObj, 6, PyList_New(0)); // empty list
-    //    PyList_SetItem(listObj, 7, PyDict_New()); // empty dict
-    //
-    //    auto ref = vector<bool>{true, false, false, false, false, false, false, false, false};
+//     use this test data as soon as parallelize(...) supports exception model properly...
+//        PyObject *listObj = PyList_New(8);
+//        PyList_SetItem(listObj, 0, Py_None);
+//        PyList_SetItem(listObj, 1, PyLong_FromLong(255));
+//        PyList_SetItem(listObj, 2, PyLong_FromLong(400));
+//        PyList_SetItem(listObj, 3, Py_True);
+//        PyList_SetItem(listObj, 4, PyFloat_FromDouble(2.7));
+//        PyList_SetItem(listObj, 5, PyTuple_New(0)); // empty tuple
+//        PyList_SetItem(listObj, 6, PyList_New(0)); // empty list
+//        PyList_SetItem(listObj, 7, PyDict_New()); // empty dict
+//
+//        auto ref = vector<bool>{true, false, false, false, false, false, false, false, false};
 
     PyObject *listObj = PyList_New(3);
     PyList_SetItem(listObj, 0, Py_None);

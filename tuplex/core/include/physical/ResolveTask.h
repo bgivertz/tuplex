@@ -57,6 +57,10 @@ namespace tuplex {
         ResolveTask(int64_t stageID,
                     const std::vector<Partition*>& partitions,
                     const std::vector<Partition*>& exceptions,
+                    const std::vector<Partition*>& inputExceptions,
+                    size_t inputNum,
+                    size_t inputInd,
+                    size_t inputOff,
                     const std::vector<int64_t>& operatorIDsAffectedByResolvers, //! used to identify which exceptions DO require reprocessing because there might be a resolver in the slow path for them.
                     Schema exceptionInputSchema, //! schema of the input rows in which both user exceptions and normal-case violations are stored in. This is also the schema in which rows which on the slow path produce again an exception will be stored in.
                     Schema resolverOutputSchema, //! schema of rows that the resolve function outputs if it doesn't rethrow exceptions
@@ -72,6 +76,10 @@ namespace tuplex {
                                                             _stageID(stageID),
                                                             _partitions(partitions),
                                                             _exceptions(exceptions),
+                                                            _inputExceptions(inputExceptions),
+                                                            _inputNum(inputNum),
+                                                            _inputInd(inputInd),
+                                                            _inputOff(inputOff),
                                                             _resolverOutputSchema(resolverOutputSchema),
                                                             _targetOutputSchema(targetNormalCaseOutputSchema),
                                                             _mergeRows(mergeRows),
@@ -87,7 +95,8 @@ namespace tuplex {
                                                             _htableFormat(HashTableFormat::UNKNOWN),
                                                             _outputRowNumber(0),
                                                             _wallTime(0.0),
-                                                            _numInputRowsRead(0) {
+                                                            _numInputRowsRead(0),
+                                                            _numUnresolved(0) {
             // copy the IDs and sort them so binary search can be used.
             std::sort(_operatorIDsAffectedByResolvers.begin(), _operatorIDsAffectedByResolvers.end());
             _normalPtrBytesRemaining = 0;
@@ -202,6 +211,11 @@ namespace tuplex {
         int64_t                 _stageID; /// to which stage does this task belong to.
         std::vector<Partition*> _partitions;
         std::vector<Partition*> _exceptions;
+        std::vector<Partition*> _inputExceptions;
+        size_t _inputNum;
+        size_t _inputInd;
+        size_t _inputOff;
+
         inline Schema commonCaseInputSchema() const { return _deserializerGeneralCaseOutput->getSchema(); }
         Schema                  _resolverOutputSchema; //! what the resolve functor produces
         Schema                  _targetOutputSchema; //! which schema the final rows should be in...
@@ -224,6 +238,7 @@ namespace tuplex {
         int64_t _normalNumRows;
         int64_t _normalRowNumber;
         int64_t _rowNumber; // merged, running row number
+        int64_t _numUnresolved;
         std::unique_ptr<Deserializer> _deserializerGeneralCaseOutput; // used to infer length of a general case row
 
         std::unique_ptr<Deserializer> _deserializerNormalOutputCase; //! deserializer object for the target output schema for the normal case
@@ -287,6 +302,8 @@ namespace tuplex {
         size_t readOutputRowSize(const uint8_t* buf, size_t bufSize);
 
         void sendStatusToHistoryServer();
+
+        const uint8_t **nextException(const uint8_t **ePtr, int64_t *eNumRemaining, size_t *eInd, const uint8_t **iPtr, int64_t *iNumRemaining, size_t *iTotal, size_t *iInd);
 
         /*!
          * execute resolve and merge rows together in order

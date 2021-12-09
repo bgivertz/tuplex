@@ -13,6 +13,23 @@
 
 class AggregateTest : public PyTest {};
 
+TEST_F(AggregateTest, LocalBackendDebug) {
+    using namespace tuplex;
+    auto opts = microTestOptions();
+    opts.set("tuplex.partitionSize", "48B");
+    Context c(opts);
+
+    std::vector<Row> inputRows;
+    for (int i = 0; i < 15; ++i) {
+        if (i == 3 || i == 8 || i == 13) {
+            inputRows.push_back(Row(0));
+        } else {
+            inputRows.push_back(Row(i));
+        }
+    }
+
+    auto r = c.parallelize(inputRows).map(UDF("lambda x: 1 // x")).collect();
+}
 
 // not supported yet, needs to work together with NVO.
 //TEST_F(AggregateTest, ColumnTest) {
