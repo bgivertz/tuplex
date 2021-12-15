@@ -52,6 +52,10 @@ inline tuplex::ContextOptions testOptions() {
     co.set("tuplex.useLLVMOptimizer", "true");
     co.set("tuplex.allowUndefinedBehavior", "false");
     co.set("tuplex.webui.enable", "false");
+
+    auto randDir = "/tmp/" + chronoToISO8601(std::chrono::high_resolution_clock::now());
+    co.set("tuplex.scratchDir", randDir);
+
 #ifdef BUILD_FOR_CI
     co.set("tuplex.aws.httpThreadCount", "0");
 #else
@@ -71,6 +75,9 @@ inline tuplex::ContextOptions microTestOptions() {
     co.set("tuplex.allowUndefinedBehavior", "false");
     co.set("tuplex.webui.enable", "false");
     co.set("tuplex.optimizer.mergeExceptionsInOrder", "true"); // force exception resolution for single stages to occur in order
+
+    auto randDir = "/tmp/" + chronoToISO8601(std::chrono::high_resolution_clock::now());
+    co.set("tuplex.scratchDir", randDir);
 
     // disable schema pushdown
     co.set("tuplex.csv.selectionPushdown", "true");

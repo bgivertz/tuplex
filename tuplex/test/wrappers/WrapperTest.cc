@@ -205,7 +205,7 @@ TEST_F(WrapperTest, SimpleCSVParse) {
     using namespace tuplex;
 
     // write sample file
-    FILE *f = fopen("test.csv", "w");
+    FILE *f = fopen("WrapperTest.SimpleCSVParse.csv", "w");
     fprintf(f, "1,2,3,FAST ETL!\n");
     fprintf(f, "4,5,6,FAST ETL!\n");
     fprintf(f, "7,8,9,\"FAST ETL!\"");
@@ -222,7 +222,7 @@ TEST_F(WrapperTest, SimpleCSVParse) {
         // below is essentially the following python code.
         // res = dataset.map(lambda a, b, c, d: d).collect()
         // assert res == ["FAST ETL!", "FAST ETL!", "FAST ETL!"]
-        auto res = c.csv("test.csv").map("lambda a, b, c, d: d", "").collect();
+        auto res = c.csv("WrapperTest.SimpleCSVParse.csv").map("lambda a, b, c, d: d", "").collect();
 
         auto resObj = res.ptr();
 
@@ -240,7 +240,7 @@ TEST_F(WrapperTest, SimpleCSVParse) {
     }
 
     // remove file
-    remove("test.csv");
+    remove("WrapperTest.SimpleCSVParse.csv");
 }
 
 TEST_F(WrapperTest, GetOptions) {
@@ -275,7 +275,7 @@ TEST_F(WrapperTest, Show) {
     using namespace tuplex;
 
     // write sample file
-    FILE *f = fopen("test.csv", "w");
+    FILE *f = fopen("WrapperTest.Show.csv", "w");
     fprintf(f, "a,b,c,s\n");
     fprintf(f, "1,2,3,FAST ETL!\n");
     fprintf(f, "4,5,6,FAST ETL!\n");
@@ -293,11 +293,11 @@ TEST_F(WrapperTest, Show) {
         // below is essentially the following python code.
         // res = dataset.map(lambda a, b, c, d: d).collect()
         // assert res == ["FAST ETL!", "FAST ETL!", "FAST ETL!"]
-        c.csv("test.csv").show();
+        c.csv("WrapperTest.Show.csv").show();
     }
 
     // remove file
-    remove("test.csv");
+    remove("WrapperTest.Show.csv");
 
 }
 
@@ -716,13 +716,13 @@ TEST_F(WrapperTest, ColumnNames) {
         }
 
         // write sample file
-        FILE *f = fopen("test.csv", "w");
+        FILE *f = fopen("WrapperTest.ColumnNames.csv", "w");
         fprintf(f, "a,b,c,d\n");
         fprintf(f, "4,5,6,FAST ETL!\n");
         fprintf(f, "7,8,9,\"FAST ETL!\"");
         fclose(f);
 
-        auto res2 = c.csv("test.csv").columns();
+        auto res2 = c.csv("WrapperTest.ColumnNames.csv").columns();
         ASSERT_EQ(boost::python::len(res2), 4);
         std::vector<std::string> ref2{"a", "b", "c", "d"};
         for (int i = 0; i < boost::python::len(res1); ++i) {
@@ -855,11 +855,11 @@ TEST_F(WrapperTest, IfWithNull) {
         pds = pds.withColumn("CancellationReason", divertedCode, "");
 
         // this here works. it doesn't...???
-        pds.tocsv("test.csv");
+        pds.tocsv("WrapperTest.IfWithNull.csv");
     }
 
     // load file and compare
-    auto contents = fileToString("test.part0.csv");
+    auto contents = fileToString("WrapperTest.IfWithNull.part0.csv");
 
     EXPECT_EQ(contents, "FlDate,OpUniqueCarrier,CancellationCode,Diverted,CancellationReason\n"
                         "2019-01-06,9E,,0.00000000,None\n"

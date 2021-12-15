@@ -19,12 +19,14 @@ protected:
 
     std::unique_ptr<tuplex::Context> context;
     PyThreadState *saveState;
+    std::string fileName;
 
     void SetUp() override {
         using namespace std;
 
+        fileName = "CSVDataFrameTest" + std::string(::testing::UnitTest::GetInstance()->current_test_info()->name()) + ".csv";
         // write test file
-        ofstream ofs("test.csv");
+        ofstream ofs(fileName);
 
         ofs<<"firstname,surname,income\n";
         ofs<<"Manuel,Neuer,48000\n";
@@ -48,11 +50,11 @@ protected:
         python::closeInterpreter();
 
         // remove test file
-        remove("test.csv");
+        remove(fileName);
 
     }
 
-    tuplex::DataSet& csvfile() { return context->csv("test.csv"); }
+    tuplex::DataSet& csvfile() { return context->csv(fileName); }
 
 };
 
@@ -190,12 +192,12 @@ TEST_F(DataFrameTest, CSVConflictingColumns) {
     auto data = "a,b,2\n"
                 "c,d,3";
 
-    ofstream ofs("test.csv");
+    ofstream ofs(fileName);
     ofs<<data<<endl;
 
     Context c(microTestOptions());
 
-    auto v = c.csv("test.csv", vector<string>{"a", "b", "c"}, false, ',')
+    auto v = c.csv(fileName, vector<string>{"a", "b", "c"}, false, ',')
               .map(UDF("lambda x: (x['c'] + 1, x['a'])")).collectAsVector();
 
     for(auto r : v)
@@ -205,7 +207,7 @@ TEST_F(DataFrameTest, CSVConflictingColumns) {
     EXPECT_EQ(v[0].toPythonString(), Row(3, "a").toPythonString());
     EXPECT_EQ(v[1].toPythonString(), Row(4, "c").toPythonString());
 
-    remove("test.csv");
+    remove(fileName);
 }
 
 // explicit schema test
@@ -285,10 +287,10 @@ TEST_F(DataFrameTest, ToCSVFile) {
 
     c.parallelize({Row(10, 42.34, "hello", "hello \"world!\""),
                    Row(11, 43.34, "hello", "abc")})
-                   .tocsv("test.csv");
+                   .tocsv("DataFrameTest.ToCSVFile.csv");
 
     // check that file was written locally
-    FILE *file = fopen("test.part0.csv", "r");
+    FILE *file = fopen("DataFrameTest.ToCSVFile.part0.csv", "r");
     ASSERT_TRUE(file);
 
     fseek(file, 0L, SEEK_END);
