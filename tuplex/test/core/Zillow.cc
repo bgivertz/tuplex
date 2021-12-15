@@ -25,6 +25,8 @@ TEST_F(ZillowTest, LargeDirtyFileParse) {
     using namespace tuplex;
     using namespace std;
 
+    auto opts = ContextOptions::defaults();
+    opts.set("tuplex.scratchDir", "file:///tmp/ZillowTestLargeDirtyFileParse");
     Context c;
 
     // TODO: when not using a restricted test environment like azure pipelines

@@ -455,7 +455,8 @@ TEST_F(Resolve, FilterResolve) {
 TEST_F(Resolve, ResolverThrowingExceptions) {
     // reset log
     logStream.str("");
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     // check that throwing exceptions is correctly accounted for
     auto rs = c.parallelize({Row(1), Row(2), Row(0)})
