@@ -65,7 +65,7 @@ TEST_F(DataFrameTest, PrefixNullTest) {
     using namespace tuplex;
     using namespace std;
 
-    URI uri("test.txt");
+    URI uri("DataFrameTest.PrefixNullTest.txt");
     stringToFile(uri, "0\n000\n0000\n00\n0");
     auto confA = microTestOptions();
     auto confB = microTestOptions();
