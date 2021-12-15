@@ -53,6 +53,7 @@ inline tuplex::ContextOptions testOptions() {
     co.set("tuplex.allowUndefinedBehavior", "false");
     co.set("tuplex.webui.enable", "false");
 
+    auto tp = std::chrono::high_resolution_clock::now();
     auto tpStr = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
     auto randDir = "file:///tmp/" + tpStr;    co.set("tuplex.scratchDir", randDir);
     co.set("tuplex.scratchDir", randDir);
