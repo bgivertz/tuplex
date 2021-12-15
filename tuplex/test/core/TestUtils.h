@@ -78,10 +78,10 @@ inline tuplex::ContextOptions microTestOptions() {
     co.set("tuplex.webui.enable", "false");
     co.set("tuplex.optimizer.mergeExceptionsInOrder", "true"); // force exception resolution for single stages to occur in order
 
-//    auto tp = std::chrono::high_resolution_clock::now();
-//    auto tpStr = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
-//    auto randDir = "file:///tmp/" + tpStr;
-//    co.set("tuplex.scratchDir", randDir);
+    auto tp = std::chrono::high_resolution_clock::now();
+    auto tpStr = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
+    auto randDir = "file:///tmp/" + tpStr;
+    co.set("tuplex.scratchDir", randDir);
 
     // disable schema pushdown
     co.set("tuplex.csv.selectionPushdown", "true");
