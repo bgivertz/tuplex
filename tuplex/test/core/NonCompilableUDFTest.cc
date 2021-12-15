@@ -221,7 +221,8 @@ TEST_F(NonCompilableUDFTest, SingleMapMixedWithFallbackMTOrderII) {
 TEST_F(NonCompilableUDFTest, SingleFilterNonCompilableFunction) {
     using namespace tuplex;
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     // manually disable compilation for this UDF
     UDF::disableCompilation();
@@ -249,7 +250,8 @@ TEST_F(NonCompilableUDFTest, SingleFilterNonCompilableFunction) {
 TEST_F(NonCompilableUDFTest, SingleFilterCompilableFunction) {
     using namespace tuplex;
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     // manually disable compilation for this UDF
     UDF::disableCompilation();

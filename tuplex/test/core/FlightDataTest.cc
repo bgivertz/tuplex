@@ -35,7 +35,8 @@ TEST_F(FlightDataTest, boolConv) {
     using namespace tuplex;
     using namespace std;
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     auto res = c.parallelize({Row(10), Row(0), Row(-10)}).map(
             UDF("lambda x: True if x > 0 else False")).collectAsVector();
@@ -59,7 +60,8 @@ TEST_F(FlightDataTest, cleanCodeUDF) {
 
     // not working!!! need to fix...
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     auto cleanCode_c = "def cleanCode(t):\n"
                        "  if t == 'A':\n"

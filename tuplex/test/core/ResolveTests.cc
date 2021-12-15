@@ -514,7 +514,8 @@ TEST_F(Resolve, ResolverThrowingExceptions) {
 TEST_F(Resolve, ResolverThrowingException) {
     using namespace std;
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     // map operator produces exception
     // however, first resolver applied to it also throws an exception!
@@ -549,7 +550,8 @@ TEST_F(Resolve, ResolverResolvingResolver) {
 
 TEST_F(Resolve, SimpleResolver) {
     logStream.str("");
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     // c.parallelize([1, 2, 3, 4, 0]).map(lambda x: (10 /x, x * x)).resolve(ZeroDivisionError, lambda x: (0.0, x)).collect()
     auto rs = c.parallelize({Row(1), Row(2), Row(0)})
@@ -789,7 +791,9 @@ TEST_F(Resolve, DirtyZillowData) {
                          "        type = 'house'\n"
                          "    return type\n";
 
-    Context c;
+    auto opts = ContextOptions::defaults();
+    opts.set("tuplex.scratchDir", "file:///tmp/ResolveDirtyZillowData");
+    Context c(opts);
 
     // This doesn't work yet. Presumably because of mapColumn...
     auto res = c.csv("../resources/zillow_dirty.csv").cache()
@@ -879,7 +883,8 @@ TEST_F(Resolve, DirtyZillowData) {
 TEST_F(Resolve, DemoII) {
 //    c.parallelize(['123', '12345', '1234567', '987']).map(lambda s: s[4]).collect()
 
-    Context c;
+    auto opts = microTestOptions();
+    Context c(opts);
 
     auto r = c.parallelize({Row("123"), Row("12345")})
             .map(UDF("lambda s: s[4]"))

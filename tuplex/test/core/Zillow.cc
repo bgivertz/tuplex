@@ -27,7 +27,7 @@ TEST_F(ZillowTest, LargeDirtyFileParse) {
 
     auto opts = ContextOptions::defaults();
     opts.set("tuplex.scratchDir", "file:///tmp/ZillowTestLargeDirtyFileParse");
-    Context c;
+    Context c(opts);
 
     // TODO: when not using a restricted test environment like azure pipelines
     //       run test on replicated dirty zillow data!
