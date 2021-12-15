@@ -50,7 +50,7 @@ protected:
         python::closeInterpreter();
 
         // remove test file
-        remove(fileName);
+        remove(fileName.c_str());
 
     }
 
@@ -192,12 +192,12 @@ TEST_F(DataFrameTest, CSVConflictingColumns) {
     auto data = "a,b,2\n"
                 "c,d,3";
 
-    ofstream ofs(fileName);
+    ofstream ofs("DataFrameTest.CSVConflictingColumns.csv");
     ofs<<data<<endl;
 
     Context c(microTestOptions());
 
-    auto v = c.csv(fileName, vector<string>{"a", "b", "c"}, false, ',')
+    auto v = c.csv("DataFrameTest.CSVConflictingColumns.csv", vector<string>{"a", "b", "c"}, false, ',')
               .map(UDF("lambda x: (x['c'] + 1, x['a'])")).collectAsVector();
 
     for(auto r : v)
@@ -207,7 +207,7 @@ TEST_F(DataFrameTest, CSVConflictingColumns) {
     EXPECT_EQ(v[0].toPythonString(), Row(3, "a").toPythonString());
     EXPECT_EQ(v[1].toPythonString(), Row(4, "c").toPythonString());
 
-    remove(fileName);
+    remove("DataFrameTest.CSVConflictingColumns.csv");
 }
 
 // explicit schema test
