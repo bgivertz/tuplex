@@ -372,7 +372,7 @@ TEST_F(AggregateTest, UniqueMixedTypesWithInterpreterFallback) {
     opt_ref.set("tuplex.optimizer.nullValueOptimization", "true");
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
-    opt_ref.set("tuplex.scratchDir", "/tmp/AggregateTestUniqueMixedTypesWithInterpreterFallback");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/AggregateTestUniqueMixedTypesWithInterpreterFallback");
     Context c_ref(opt_ref);
 
     // create a mixed types file (majority should be string or int64 because these are the supported ones...)

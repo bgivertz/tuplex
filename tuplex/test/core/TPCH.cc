@@ -53,6 +53,7 @@ TEST_F(TpchTest, Q6) {
 
     auto ref_conf = ContextOptions::defaults();
     ref_conf.set("tuplex.executorCount", "0");
+    ref_conf.set("tuplex.scratchDir", "file:///tmp/TpchTestQ6");
 
     // auto path = "../resources/tpch/lineitem.minisample.tbl"; // small test file, in case bugs are encountered...
     auto path = "../resources/tpch/lineitem.tbl"; // SF 0.01
@@ -114,6 +115,7 @@ TEST_F(TpchTest, Q6_AggDictRewrite) {
 
     auto ref_conf = ContextOptions::defaults();
     ref_conf.set("tuplex.executorCount", "0");
+    ref_conf.set("tuplex.scratchDir", "file:///tmp/TpchTestQ6_AggDictRewrite");
 
     // auto path = "../resources/tpch/lineitem.minisample.tbl"; // small test file, in case bugs are encountered...
     auto path = "../resources/tpch/lineitem.tbl"; // SF 0.01
@@ -168,6 +170,7 @@ TEST_F(TpchTest, SimpleSumAggregate) {
     conf.set("tuplex.useLLVMOptimizer", "false");
     conf.set("tuplex.executorCount", "0");
     conf.set("tuplex.optimizer.generateParser", "true");
+    conf.set("tuplex.scratchDir", "file:///tmp/TpchTestSimpleSumAggregate");
     Context c(conf);
 
     c.parallelize({Row(1), Row(2), Row(3), Row(4), Row(5)})
@@ -184,6 +187,7 @@ TEST_F(TpchTest, SimpleFileCountWGeneratedParser) {
     conf.set("tuplex.useLLVMOptimizer", "false");
     conf.set("tuplex.executorCount", "0");
     conf.set("tuplex.optimizer.generateParser", "true");
+    conf.set("tuplex.scratchDir", "file:///tmp/TpchTestSimpleFileCountWGeneratedParser");
     Context c(conf);
     auto path = URI("test.txt");
     stringToFile(path, "a\nb");
@@ -232,6 +236,7 @@ TEST_F(TpchTest, Q19) {
     auto opt_ref = ContextOptions::defaults();
     opt_ref.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt_ref.set("tuplex.executorCount", "0"); // single-threaded
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/TpchTestQ19");
 
     for(int i = 0; i < 2; i ++) {
         ContextOptions conf(opt_ref);

@@ -108,8 +108,9 @@ TEST_F(CSVDataFrameTest, HeaderlessStringFile) {
     conf.set("tuplex.useLLVMOptimizer", "false");
     conf.set("tuplex.executorCount", "0");
     conf.set("tuplex.optimizer.generateParser", "false");
+    conf.set("tuplex.scratchDir", "file:///tmp/CSVDataFrameTestHeaderlessStringFile");
     Context c(conf);
-    auto path = URI("test.txt");
+    auto path = URI("CSVDataFrameTest.HeaderlessStringFile.txt");
     stringToFile(path, "a\nb");
 
     vector<string> ref{"a", "b"};
@@ -127,18 +128,18 @@ TEST_F(CSVDataFrameTest, TSVFile) {
     auto data = "4\tFAST ETL!\n"
                 "7\tFAST ETL!";
 
-    ofstream ofs("test.tsv");
+    ofstream ofs("CSVDataFrameTest.TSVFile.tsv");
     ofs<<data<<endl;
 
     Context c(microTestOptions());
 
-    auto v = c.csv("test.tsv").collectAsVector();
+    auto v = c.csv("CSVDataFrameTest.TSVFile.tsv").collectAsVector();
 
     ASSERT_EQ(v.size(), 2);
     EXPECT_EQ(v[0].toPythonString(), Row(4, "FAST ETL!").toPythonString());
     EXPECT_EQ(v[1].toPythonString(), Row(7, "FAST ETL!").toPythonString());
 
-    remove("test.tsv");
+    remove("CSVDataFrameTest.TSVFile.tsv");
 }
 
 TEST_F(CSVDataFrameTest, ReadHeaderLessFile) {
@@ -157,12 +158,12 @@ TEST_F(CSVDataFrameTest, ReadHeaderLessFile) {
     auto data = "4\tFAST ETL!\n"
                 "7\tFAST ETL!";
 
-    ofstream ofs("test.tsv");
+    ofstream ofs("CSVDataFrameTest.ReadHeaderLessFile.tsv");
     ofs<<data<<endl;
 
     Context c(microTestOptions());
 
-    auto v = c.csv("test.tsv", vector<string>{"a", "b"}).map(UDF("lambda x: x['a']")).collectAsVector();
+    auto v = c.csv("CSVDataFrameTest.ReadHeaderLessFile.tsv", vector<string>{"a", "b"}).map(UDF("lambda x: x['a']")).collectAsVector();
 
     for(auto r : v)
         std::cout<<r.toPythonString()<<std::endl;
@@ -173,13 +174,13 @@ TEST_F(CSVDataFrameTest, ReadHeaderLessFile) {
 
     // now using show, to make sure column was captured adequately
     std::stringstream ss;
-    c.csv("test.tsv", vector<string>{"a", "b"}).selectColumns({"a"}).show(100, ss);
+    c.csv("CSVDataFrameTest.ReadHeaderLessFile.tsv", vector<string>{"a", "b"}).selectColumns({"a"}).show(100, ss);
 
     std::cout<<ss.str()<<std::endl;
 
     EXPECT_EQ(ss.str(), ref);
 
-    remove("test.tsv");
+    remove("CSVDataFrameTest.ReadHeaderLessFile.tsv");
 }
 
 // @TODO: tests for header conflicting with columns, etc.

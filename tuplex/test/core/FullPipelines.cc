@@ -658,6 +658,7 @@ TEST_F(PipelinesTest, ZillowConfigHarness) {
         opt_ref.set("tuplex.optimizer.nullValueOptimization", "false");
         opt_ref.set("tuplex.csv.selectionPushdown", "false");
         opt_ref.set("tuplex.optimizer.generateParser", "false");
+        opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestZillowConfigHarness");
 
         Context c_ref(opt_ref);
         auto ref = pipelineAsStrs(zillowPipeline(c_ref, zpath, cache));
@@ -745,6 +746,7 @@ TEST_F(PipelinesTest, ServiceRequestsConfigHarnessNVOvsNormal) {
     opt_ref.set("tuplex.optimizer.nullValueOptimization", "false");
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestServiceRequestsConfigHarnessNVOvsNormal");
 
     auto opt_nvo = opt_ref;
     opt_nvo.set("tuplex.optimizer.nullValueOptimization", "true");
@@ -824,6 +826,7 @@ TEST_F(PipelinesTest, FlightsWithPyResolver) {
     opt_ref.set("tuplex.csv.operatorReordering", "false");
     // opt_ref.set("tuplex.optimizer.generateParser", "true");
     opt_ref.set("tuplex.optimizer.generateParser", "true");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightsWithPyResolver");
 
     // opt_ref.set("tuplex.optimizer.generateParser", "false");
 
@@ -874,6 +877,7 @@ TEST_F(PipelinesTest, FlightDevWithColumnPyFallback) {
     opt_ref.set("tuplex.useLLVMOptimizer", "false"); // deactivate
     opt_ref.set("tuplex.optimizer.nullValueOptimization", "false");
     opt_ref.set("tuplex.csv.selectionPushdown", "false"); // disable for now, prob errors later...
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightDevWithColumnPyFallback");
 
     // Note: when null value opt is turned off AND selection pushdown is off,
     // then on 2009 there are 8 rows where errors are produced on columns which actually do not
@@ -924,6 +928,7 @@ TEST_F(PipelinesTest, FlightDevToFixWithPurePythonPipeline) {
     opt_ref.set("tuplex.useLLVMOptimizer", "false"); // deactivate
     opt_ref.set("tuplex.optimizer.nullValueOptimization", "false");
     opt_ref.set("tuplex.csv.selectionPushdown", "false"); // disable for now, prob errors later...
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightDevToFixWithPurePythonPipeline");
 
     // Note: when null value opt is turned off AND selection pushdown is off,
     // then on 2009 there are 8 rows where errors are produced on columns which actually do not
@@ -954,6 +959,7 @@ TEST_F(PipelinesTest, TypeErrorFlightPipeline) {
     opt.set("tuplex.optimizer.generateParser", "false"); // do not use parser generation
     opt.set("tuplex.inputSplitSize", "128MB"); // probably something wrong with the reader, again??
     opt.set("tuplex.resolveWithInterpreterOnly", "false");
+    opt.set("tuplex.scratchDir", "file:///tmp/PipelinesTestTypeErrorFlightPipeline");
 
     Context ctx(opt);
 
@@ -988,6 +994,7 @@ TEST_F(PipelinesTest, FlightNullValueCacheMini) {
     opt_ref.set("tuplex.optimizer.generateParser", "false"); // do not use par
     opt_ref.set("tuplex.inputSplitSize", "64MB"); // probably something wrong with the reader, again??
     opt_ref.set("tuplex.optimizer.mergeExceptionsInOrder", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightNullValueCacheMini");
     Context c_ref(opt_ref);
     std::string bts_path="../resources/pipelines/flights/flights_on_time_performance_2019_01.10k-sample.csv";
     auto carrier_path="../resources/pipelines/flights/L_CARRIER_HISTORY.csv";
@@ -1079,6 +1086,7 @@ TEST_F(PipelinesTest, ZillowDev) {
     opt_ref.set("tuplex.csv.selectionPushdown", "true"); // disable for now, prob errors later...
     opt_ref.set("tuplex.optimizer.generateParser", "true"); // do not use par => wrong parse for some cell here!
     opt_ref.set("tuplex.inputSplitSize", "64MB"); // probably something wrong with the reader, again??
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestZillowDev");
     //opt_ref.set("tuplex.optimizer.mergeExceptionsInOrder", "false");
     Context c_ref(opt_ref);
 
@@ -1271,6 +1279,7 @@ TEST_F(PipelinesTest, FlightWithIgnore) {
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
     opt_ref.set("tuplex.optimizer.filterPushdown", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightWithIgnore");
 
     auto opt_proj_wLLVMOpt_parse_null = opt_ref;
     opt_proj_wLLVMOpt_parse_null.set("tuplex.csv.selectionPushdown", "true");
@@ -1301,6 +1310,7 @@ TEST_F(PipelinesTest, CarriersOnly) {
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
     opt_ref.set("tuplex.optimizer.mergeExceptionsInOrder", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestCarriersOnly");
 
     Context c_ref(opt_ref);
 
@@ -1350,6 +1360,7 @@ TEST_F(PipelinesTest, FlightConfigHarness) {
         // Note: all resolve with interpreter work, except for when projection pushdown is used.
         //       then there's an error in the interpreter path. Reported as Bug issue #https://github.com/LeonhardFS/Tuplex/issues/247
         opt_ref.set("tuplex.resolveWithInterpreterOnly", "false");
+        opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestFlightConfigHarness");
 
         Context c_ref(opt_ref);
         auto ref = pipelineAsStrs(flightPipeline(c_ref, bts_path, carrier_path, airport_path, cache));
@@ -1416,6 +1427,7 @@ TEST_F(PipelinesTest, GoogleTrace) {
     opt_ref.set("tuplex.optimizer.nullValueOptimization", "false");
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/PipelinesTestGoogleTrace");
 
     Context c_ref(opt_ref);
 

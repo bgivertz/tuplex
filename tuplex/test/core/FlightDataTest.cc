@@ -201,6 +201,7 @@ TEST_F(FlightDataTest, DefunctYearFunc) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestDefunctYearFunc");
     Context c(opt);
 
     string file_path = "../resources/pipelines/flights/L_CARRIER_HISTORY.csv";
@@ -291,6 +292,8 @@ TEST_F(FlightDataTest, AirportCleaning) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestAirportCleaning");
+
 
     // projection pushdown enabled!
     opt.set("tuplex.csv.selectionPushdown", "true");
@@ -365,6 +368,7 @@ TEST_F(FlightDataTest, LeftJoin) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     //opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestLeftJoin");
 
     // deactivate NULL value optimization, it's not working yet -.-
     opt.set("tuplex.optimizer.nullValueOptimization", "false");
@@ -582,6 +586,7 @@ TEST_F(FlightDataTest, SelectAndFilterPushdown) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestSelectAndFilterPushdown");
 
     // deactivate NULL value optimization
     opt.set("tuplex.optimizer.nullValueOptimization", "false");
@@ -614,6 +619,7 @@ TEST_F(FlightDataTest, WeirdFilterIssue) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestWeirdFilterIssue");
 
     // deactivate NULL value optimization
     opt.set("tuplex.optimizer.filterPushdown", "true");
@@ -651,6 +657,7 @@ TEST_F(FlightDataTest, ProjectionPushdown) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestProjectionPushdown");
 
     // deactivate NULL value optimization
     opt.set("tuplex.optimizer.nullValueOptimization", "false");
@@ -744,6 +751,7 @@ TEST_F(FlightDataTest, ProjectionPushdownInvariant) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestProjectionPushdownInvariant");
 
     // deactivate NULL value optimization
     opt.set("tuplex.optimizer.nullValueOptimization", "false");
@@ -772,6 +780,7 @@ TEST_F(FlightDataTest, NullGeneratedParserTest) {
     opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
     opt.set("tuplex.optimizer.generateParser", "true"); // activate generated parser!!!
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestNullGeneratedParserTest");
 
     Context c(opt);
     auto path = "../resources/flights_on_time_performance_2019_01.sample.csv";
@@ -807,6 +816,7 @@ TEST_F(FlightDataTest, LargeFilePipeline) {
     opt.set("tuplex.runTimeMemory", "128MB"); // join might require a lot of runtime memory!!!
     //opt.set("tuplex.executorCount", "0"); // single-threaded
     opt.set("tuplex.useLLVMOptimizer", "false"); // deactivate
+    opt.set("tuplex.scratchDir", "file:///tmp/FlightDataTestLargeFilePipeline");
 
     //// TODO: fix here null values!!!
     // opt.set("tuplex.optimizer.generateParser", "true");

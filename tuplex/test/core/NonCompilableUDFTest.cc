@@ -108,6 +108,7 @@ TEST_F(NonCompilableUDFTest, SingleMapNonCompilableFunctionMT) {
     // lower partition Size to force multitreading & use 8 tasks
     co.set("tuplex.partitionSize", "128B");
     co.set("tuplex.executorCount", "8");
+    co.set("tuplex.scratchDir", "file:///tmp/NonCompilableUDFTestSingleMapNonCompilableFunctionMT");
     Context c(co);
 
     // power is not yet supported
@@ -145,6 +146,7 @@ TEST_F(NonCompilableUDFTest, SingleMapMixedWithFallbackMTOrderI) {
     // lower partition Size to force multitreading & use 8 tasks
     co.set("tuplex.partitionSize", "128B");
     co.set("tuplex.executorCount", "8");
+    co.set("tuplex.scratchDir", "file:///tmp/NonCompilableUDFTestSingleMapMixedWithFallbackMTOrderI");
     Context c(co);
 
     // manually disable compilation for this UDF
@@ -184,6 +186,7 @@ TEST_F(NonCompilableUDFTest, SingleMapMixedWithFallbackMTOrderII) {
     // lower partition Size to force multitreading & use 8 tasks
     co.set("tuplex.partitionSize", "128B");
     co.set("tuplex.executorCount", "8");
+    co.set("tuplex.scratchDir", "file:///tmp/NonCompilableUDFTestSingleMapMixedWithFallbackMTOrderII");
     Context c(co);
 
     // manually disable compilation for this UDF

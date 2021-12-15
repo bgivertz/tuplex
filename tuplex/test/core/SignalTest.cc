@@ -36,6 +36,7 @@ TEST_F(SigTest, FlightInterrupt) {
     opt_ref.set("tuplex.csv.selectionPushdown", "false");
     opt_ref.set("tuplex.optimizer.generateParser", "false");
     opt_ref.set("tuplex.optimizer.mergeExceptionsInOrder", "false");
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/SigTestFlightInterrupt");
 
     // Tuplex thread
     Context c_ref(opt_ref);

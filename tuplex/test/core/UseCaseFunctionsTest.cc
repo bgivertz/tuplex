@@ -1190,6 +1190,7 @@ TEST_F(UseCaseFunctionsTest, ZillowCacheEachStep) {
     opt_ref.set("tuplex.csv.selectionPushdown", "true"); // disable for now, prob errors later...
     opt_ref.set("tuplex.optimizer.generateParser", "true"); // do not use par => wrong parse for some cell here!
     opt_ref.set("tuplex.inputSplitSize", "64MB"); // probably something wrong with the reader, again??
+    opt_ref.set("tuplex.scratchDir", "file:///tmp/UseCaseFunctionsTestZillowCacheEachStep");
         Context ctx(opt_ref);
 
     auto extractBd_c = "def extractBd(x):\n"
