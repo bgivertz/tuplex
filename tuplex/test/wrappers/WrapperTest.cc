@@ -311,7 +311,7 @@ TEST_F(WrapperTest, GoogleTrace) {
     PyDict_SetItemString(pyopt, "tuplex.webui.enable", Py_False);
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "");
+    PythonContext c("python", "", "{\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\"}");
     /// Based on Google trace data, this mini pipeline serves as CSV parsing test ground.
     ///  c.csv(file_path) \
     ///   .filter(lambda x: x[3] == 0) \
@@ -458,7 +458,7 @@ TEST_F(WrapperTest, extractPriceExample) {
     auto cols = boost::python::list(boost::python::handle<>(colObj));
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "");
+    PythonContext c("python", "", "{\"tuplex.scratchDir\": \"file:///tmp/WrapperTest\"}");
 
     {
         // all calls go here...
@@ -801,7 +801,7 @@ TEST_F(WrapperTest, IfWithNull) {
 
     // RAII, destruct python context!
     PythonContext c("python", "",
-                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\", \"tuplex.executorCount\":0}");
+                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\", \"tuplex.executorCount\":0, \"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\"}");
     // execute mini part of pipeline and output csv to file
     // pipeline is
     // df = ctx.csv(perf_path)
@@ -875,7 +875,7 @@ TEST_F(WrapperTest, FlightData) {
 
     // RAII, destruct python context!
     PythonContext c("python", "",
-                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\", \"tuplex.executorCount\":0}");
+                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\", \"tuplex.executorCount\":0, \"tuplex.scratchDir\": \"file:///tmp/WrapperTestFlightData\"}");
     // execute mini part of pipeline and output csv to file
     // pipeline is
     // df = ctx.csv(perf_path)
@@ -1001,7 +1001,8 @@ TEST_F(WrapperTest, FlightSimulateSpark) {
                     " \"tuplex.optimizer.csv.selectionPushdown\" : \"True\","
                     " \"tuplex.resolveWithInterpreterOnly\":\"False\","
                     "\"tuplex.executorCount\":0,"
-                    "\"tuplex.driverMemory\":\"6G\"}");
+                    "\"tuplex.driverMemory\":\"6G\","
+                    "\"tuplex.scratchDir\": \"file:///tmp/WrapperTestFlightSimulateSpark\"}");
 
 
     string bts_path = "../resources/flights_on_time_performance_2019_01.sample.csv";
@@ -1082,7 +1083,7 @@ TEST_F(WrapperTest, Airport) {
 
     // RAII, destruct python context!
     PythonContext c("python", "",
-                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\"}");
+                    "{\"tuplex.webui.enable\":\"False\", \"tuplex.useLLVMOptimizer\" : \"False\", \"tuplex.scratchDir\": \"file:///tmp/WrapperTestAirport\"}");
 
     // execute mini part of pipeline and output csv to file
     // pipeline is
@@ -1606,7 +1607,7 @@ TEST_F(WrapperTest, TPCHQ6) {
                                            "                    'l_discount', 'l_tax', 'l_returnflag', 'l_linestatus',\n"
                                            "                    'l_shipdate', 'l_commitdate', 'l_receiptdate',\n"
                                            "                    'l_shipinstruct', 'l_shipmode', 'l_comment']", "listitem_columns");
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\"}");
 
     {
 
@@ -2076,6 +2077,7 @@ TEST_F(WrapperTest, ZillowDirty) {
                      " \"optimizer.nullValueOptimization\": false,"
                      " \"csv.selectionPushdown\": false, "
                      "\"optimizer.generateParser\": false,"
+                     "\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\","
                      "\"optimizer.mergeExceptionsInOrder\": true}";
 
     auto json_opts_alt = "{\"webui.enable\": false,"
@@ -2088,6 +2090,7 @@ TEST_F(WrapperTest, ZillowDirty) {
                      " \"optimizer.nullValueOptimization\": false,"
                      " \"csv.selectionPushdown\": false, "
                      "\"optimizer.generateParser\": false,"
+                     "\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\","
                      "\"optimizer.mergeExceptionsInOrder\": false}";
 
     z_path = "../resources/zillow_dirty.csv";
@@ -2199,6 +2202,7 @@ TEST_F(WrapperTest, LambdaResolveI) {
     auto ctx_opts = "{\"webui.enable\": false,"
                          " \"driverMemory\": \"8MB\","
                          " \"partitionSize\": \"256KB\","
+                         "\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\","
                          "\"resolveWithInterpreterOnly\": true}";
     PythonContext ctx("", "", ctx_opts);
 
@@ -2303,6 +2307,7 @@ TEST_F(WrapperTest, NYC311) {
                     " \"driverMemory\": \"8MB\","
                     " \"partitionSize\": \"256KB\","
                     "\"executorCount\": 0,"
+                    "\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\","
                     "\"resolveWithInterpreterOnly\": true}";
 
     auto fix_zip_codes_c = "def fix_zip_codes(zips):\n"
