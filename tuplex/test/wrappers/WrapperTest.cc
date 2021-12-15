@@ -55,7 +55,7 @@ TEST_F(WrapperTest, LambdaBackend) {
 TEST_F(WrapperTest, StringTuple) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject *listObj = PyList_New(4);
     PyObject *tupleObj1 = PyTuple_New(2);
@@ -97,7 +97,7 @@ TEST_F(WrapperTest, StringTuple) {
 TEST_F(WrapperTest, MixedSimpleTupleTuple) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject *listObj = PyList_New(4);
     PyObject *tupleObj1 = PyTuple_New(2);
@@ -139,7 +139,7 @@ TEST_F(WrapperTest, MixedSimpleTupleTuple) {
 TEST_F(WrapperTest, StringParallelize) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(3);
     PyList_SET_ITEM(listObj, 0, python::PyString_FromString("Hello"));
@@ -165,7 +165,7 @@ TEST_F(WrapperTest, StringParallelize) {
 TEST_F(WrapperTest, DictionaryParallelize) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * dictObj1 = PyDict_New();
     PyDict_SetItem(dictObj1, python::PyString_FromString("Hello"), PyFloat_FromDouble(0.0));
@@ -215,7 +215,7 @@ TEST_F(WrapperTest, SimpleCSVParse) {
     PyDict_SetItemString(pyopt, "tuplex.webui.enable", Py_False);
 
     // RAII, destruct python context!
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -246,7 +246,7 @@ TEST_F(WrapperTest, SimpleCSVParse) {
 TEST_F(WrapperTest, GetOptions) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     // weird RAII problems of boost python
     {
@@ -262,8 +262,8 @@ TEST_F(WrapperTest, GetOptions) {
 TEST_F(WrapperTest, TwoContexts) {
     using namespace tuplex;
 
-    PythonContext c("");
-    PythonContext c2("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
+    PythonContext c2("c", "", "{\"tuplex.executorCount\": 4}");
 
     {
         auto opt1 = c.options();
@@ -286,7 +286,7 @@ TEST_F(WrapperTest, Show) {
     PyDict_SetItemString(pyopt, "tuplex.webui.enable", Py_False);
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "");
+    PythonContext c("python", "", "{\"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -311,7 +311,7 @@ TEST_F(WrapperTest, GoogleTrace) {
     PyDict_SetItemString(pyopt, "tuplex.webui.enable", Py_False);
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\"}");
+    PythonContext c("python", "", "{\"tuplex.scratchDir\": \"file:///tmp/WrapperTestIfWithNull\", \"tuplex.executorCount\": 4}");
     /// Based on Google trace data, this mini pipeline serves as CSV parsing test ground.
     ///  c.csv(file_path) \
     ///   .filter(lambda x: x[3] == 0) \
@@ -558,7 +558,7 @@ TEST_F(WrapperTest, DictListParallelize) {
     using namespace tuplex;
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\" : \"False\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\" : \"False\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -595,7 +595,7 @@ TEST_F(WrapperTest, UpcastParallelizeI) {
     using namespace tuplex;
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -625,7 +625,7 @@ TEST_F(WrapperTest, UpcastParallelizeII) {
     using namespace tuplex;
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -659,7 +659,7 @@ TEST_F(WrapperTest, FilterAll) {
     using namespace tuplex;
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -685,7 +685,7 @@ TEST_F(WrapperTest, ColumnNames) {
     using namespace tuplex;
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -746,7 +746,7 @@ TEST_F(WrapperTest, IntegerTuple) {
     PyDict_SetItemString(pyopt, "tuplex.autoUpcast", Py_True);
 
     // RAII, destruct python context!
-    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\"}");
+    PythonContext c("python", "", "{\"tuplex.webui.enable\":\"False\", \"tuplex.autoUpcast\":\"True\", \"tuplex.executorCount\": 4}");
 
     // weird block syntax due to RAII problems.
     {
@@ -1127,7 +1127,7 @@ TEST_F(WrapperTest, Airport) {
 TEST_F(WrapperTest, OptionParallelizeI) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(5);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(112));
@@ -1159,7 +1159,7 @@ TEST_F(WrapperTest, OptionParallelizeI) {
 TEST_F(WrapperTest, OptionParallelizeII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(5);
 
@@ -1204,7 +1204,7 @@ TEST_F(WrapperTest, OptionParallelizeII) {
 TEST_F(WrapperTest, NoneParallelize) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(2);
     PyList_SET_ITEM(listObj, 0, Py_None);
@@ -1230,7 +1230,7 @@ TEST_F(WrapperTest, NoneParallelize) {
 TEST_F(WrapperTest, EmptyMapI) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(4);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
@@ -1260,7 +1260,7 @@ TEST_F(WrapperTest, EmptyMapI) {
 TEST_F(WrapperTest, EmptyMapII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(4);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
@@ -1294,7 +1294,7 @@ TEST_F(WrapperTest, EmptyMapII) {
 TEST_F(WrapperTest, EmptyMapIII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(4);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
@@ -1328,7 +1328,7 @@ TEST_F(WrapperTest, EmptyMapIII) {
 TEST_F(WrapperTest, EmptyOptionMapI) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(4);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
@@ -1360,7 +1360,7 @@ TEST_F(WrapperTest, EmptyOptionMapI) {
 TEST_F(WrapperTest, EmptyOptionMapII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(4);
     PyList_SET_ITEM(listObj, 0, PyLong_FromLong(1));
@@ -1392,7 +1392,7 @@ TEST_F(WrapperTest, EmptyOptionMapII) {
 TEST_F(WrapperTest, OptionTupleParallelizeI) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(3);
 
@@ -1443,7 +1443,7 @@ TEST_F(WrapperTest, OptionTupleParallelizeI) {
 TEST_F(WrapperTest, OptionTupleParallelizeII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(3);
 
@@ -1494,7 +1494,7 @@ TEST_F(WrapperTest, OptionTupleParallelizeII) {
 TEST_F(WrapperTest, OptionTupleParallelizeIII) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = PyList_New(3);
 
@@ -1544,7 +1544,7 @@ TEST_F(WrapperTest, OptionTupleParallelizeIII) {
 TEST_F(WrapperTest, parallelizeOptionTypeI) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = python::runAndGet(
             "test_input = [(1.0, '2', 3, '4', 5, 6, True, 8, 9, None), (None, '2', 3, None, 5, 6, True, 8, 9, None)"
@@ -1573,7 +1573,7 @@ TEST_F(WrapperTest, parallelizeOptionTypeI) {
 TEST_F(WrapperTest, parallelizeNestedSlice) {
     using namespace tuplex;
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     PyObject * listObj = python::runAndGet(
             "test_input = [((), (\"hello\",), 123, \"oh no\", (1, 2)), ((), (\"goodbye\",), 123, \"yes\", (-10, 2)),\n"
@@ -1630,7 +1630,7 @@ TEST_F(WrapperTest, TupleParallelizeI) {
 
     PyObject* listObj = python::runAndGet("L = [('hello', 'world', 'hi', 1, 2, 3), ('foo', 'bar', 'baz', 4, 5, 6), ('blank', '', 'not', 7, 8, 9)]", "L");
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
     {
         auto list = boost::python::list(boost::python::handle<>(listObj));
         c.parallelize(list).map("lambda x: ({x[0]: x[3], x[1]: x[4], x[2]: x[5]},)", "").show();
@@ -1642,7 +1642,7 @@ TEST_F(WrapperTest, TupleParallelizeII) {
 
     PyObject* listObj = python::runAndGet("L = [({}, {}, {}), ({}, {}, {}), ({}, {}, {})]", "L");
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
     {
         auto list = boost::python::list(boost::python::handle<>(listObj));
         c.parallelize(list).map("lambda x, y, z: [x, y, z]", "").show();
@@ -1659,7 +1659,7 @@ TEST_F(WrapperTest, DictParallelizeRefTest) {
     PyObject* strings = python::runAndGet("strings = [('hello', 'world', 'hi'), ('foo', 'bar', 'baz'), ('blank', '', 'not')]\n", "strings");
     PyObject* floats = python::runAndGet("floats = [(1.2, 3.4, -100.2), (5.6, 7.8, -1.234), (9.0, 0.1, 2.3)]\n", "floats");
     ASSERT_TRUE(floats->ob_refcnt > 0);
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     {
 
@@ -1702,7 +1702,7 @@ TEST_F(WrapperTest, DictParallelizeRefTest) {
 TEST_F(WrapperTest, BuiltinModule) {
     using namespace tuplex;
     using namespace std;
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
 
     {
         PyObject* L = PyList_New(3);
@@ -1734,7 +1734,7 @@ TEST_F(WrapperTest, SwapIII) {
                 "    return a, b\n"
                 "\n";
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
     {
         PyObject* L = PyList_New(2);
         auto tuple1 = PyTuple_New(2);
@@ -2142,7 +2142,7 @@ TEST_F(WrapperTest, BitwiseAnd) {
 
     PyObject* listObj = python::runAndGet("L = [(False, False), (False, True), (True, False), (True, True)]", "L");
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
     {
         auto list = boost::python::list(boost::python::handle<>(listObj));
         auto res_list = c.parallelize(list).map("lambda a, b: a & b", "").collect();
@@ -2158,7 +2158,7 @@ TEST_F(WrapperTest, MetricsTest) {
 
     PyObject* listObj = python::runAndGet("L = [(False, False), (False, True), (True, False), (True, True)]", "L");
 
-    PythonContext c("");
+    PythonContext c("c", "", "{\"tuplex.executorCount\": 4}");
     {
         auto list = boost::python::list(boost::python::handle<>(listObj));
         auto res_list = c.parallelize(list).map("lambda a, b: a & b", "").collect();

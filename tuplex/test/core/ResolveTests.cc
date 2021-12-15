@@ -181,7 +181,8 @@ TEST_F(Resolve, LargeTracingTest) {
         rows.push_back(Row(8, 8, "Hello world said Tux!"));
     }
 
-    Context c;
+    auto opts = testOptions();
+    Context c(opts);
 
     // map!
     // auto res = c.parallelize(rows).map(UDF("lambda a, b, c: (a / b, c[a])")).resolve(ExceptionCode::ZERODIVISIONERROR, UDF("lambda a, b, c: (0.0, c[a])")).collect();
