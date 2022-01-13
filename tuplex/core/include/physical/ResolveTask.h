@@ -96,7 +96,8 @@ namespace tuplex {
                                                             _outputRowNumber(0),
                                                             _wallTime(0.0),
                                                             _numInputRowsRead(0),
-                                                            _numUnresolved(0) {
+                                                            _numUnresolved(0),
+                                                            _pyObjectsProcessed(0) {
             // copy the IDs and sort them so binary search can be used.
             std::sort(_operatorIDsAffectedByResolvers.begin(), _operatorIDsAffectedByResolvers.end());
             _normalPtrBytesRemaining = 0;
@@ -229,6 +230,7 @@ namespace tuplex {
         char _csvQuotechar;
 
         size_t _numUnresolved;
+        size_t _pyObjectsProcessed;
 
         int64_t                 _currentRowNumber;
         // std::vector<Partition*> _mergedPartitions;

@@ -12,26 +12,26 @@
 
 
 namespace tuplex {
-    std::vector<Row> ErrorDataSet::takeAsVector(int64_t numElements, std::ostream &os) {
+    std::vector<Row> ErrorDataSet::takeAsVector(int64_t numElements, std::ostream &os, bool incremental) {
         // return empty vector and print err message
         Logger::instance().logger("core").error(this->_error);
 
         return std::vector<Row>();
     }
 
-    std::vector<Row> ErrorDataSet::collectAsVector(std::ostream &os) {
-        return takeAsVector(0, os);
+    std::vector<Row> ErrorDataSet::collectAsVector(std::ostream &os, bool incremental) {
+        return takeAsVector(0, os, incremental);
     }
 
-    std::shared_ptr<ResultSet> ErrorDataSet::take(int64_t numElements, std::ostream &os) {
+    std::shared_ptr<ResultSet> ErrorDataSet::take(int64_t numElements, std::ostream &os, bool incremental) {
         // return empty vector and print err message
         Logger::instance().logger("core").error(this->_error);
 
         return std::shared_ptr<ResultSet>(new ResultSet(Schema::UNKNOWN, std::vector<Partition *>()));
     }
 
-    std::shared_ptr<ResultSet> ErrorDataSet::collect(std::ostream &os) {
-        return take(0, os);
+    std::shared_ptr<ResultSet> ErrorDataSet::collect(std::ostream &os, bool incremental) {
+        return take(0, os, incremental);
     }
 
     void

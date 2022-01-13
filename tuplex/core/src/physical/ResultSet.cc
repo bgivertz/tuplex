@@ -31,11 +31,11 @@ namespace tuplex {
     }
 
     void ResultSet::clear() {
-        for(auto partition : _partitions)
-            partition->invalidate();
-        _partitions.clear();
-        for(auto partition : _exceptions)
-            partition->invalidate();
+//        for(auto partition : _partitions)
+//            partition->invalidate();
+//        _partitions.clear();
+//        for(auto partition : _exceptions)
+//            partition->invalidate();
 
         _curRowCounter = 0;
         _byteCounter = 0;
@@ -261,7 +261,7 @@ namespace tuplex {
 #ifndef NDEBUG
         Logger::instance().defaultLogger().info("ResultSet invalidates partition " + hexAddr(first) + " uuid " + uuidToString(first->uuid()));
 #endif
-        first->invalidate();
+//        first->invalidate();
 
         // remove partition (is now processed)
         _partitions.pop_front();

@@ -35,11 +35,11 @@ namespace tuplex {
         _operator = nullptr;
     }
 
-    std::shared_ptr<ResultSet> DataSet::collect(std::ostream &os) {
-        return take(-1, os);
+    std::shared_ptr<ResultSet> DataSet::collect(std::ostream &os, bool incremental) {
+        return take(-1, os, incremental);
     }
 
-    std::shared_ptr<ResultSet> DataSet::take(int64_t numElements, std::ostream &os) {
+    std::shared_ptr<ResultSet> DataSet::take(int64_t numElements, std::ostream &os, bool incremental) {
         // error dataset?
         if (isError())
             throw std::runtime_error("is error dataset!");
@@ -50,7 +50,7 @@ namespace tuplex {
 
         // create a take node
         assert(_context);
-        LogicalOperator *op = _context->addOperator(new TakeOperator(this->_operator, numElements));
+        LogicalOperator *op = _context->addOperator(new TakeOperator(this->_operator, numElements, incremental));
         DataSet *dsptr = _context->createDataSet(op->getOutputSchema());
         dsptr->_operator = op;
         op->setDataSet(dsptr);
@@ -63,13 +63,13 @@ namespace tuplex {
     }
 
     // collect functions
-    std::vector<Row> DataSet::collectAsVector(std::ostream &os) {
-        return takeAsVector(-1, os);
+    std::vector<Row> DataSet::collectAsVector(std::ostream &os, bool incremental) {
+        return takeAsVector(-1, os, incremental);
     }
 
     // -1 means to retrieve all elements
-    std::vector<Row> DataSet::takeAsVector(int64_t numElements, std::ostream &os) {
-        auto rs = take(numElements, os);
+    std::vector<Row> DataSet::takeAsVector(int64_t numElements, std::ostream &os, bool incremental) {
+        auto rs = take(numElements, os, incremental);
         Timer timer;
 
 #warning "limiting should make this hack irrelevant..."

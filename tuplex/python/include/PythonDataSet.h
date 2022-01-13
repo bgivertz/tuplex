@@ -77,7 +77,7 @@ namespace tuplex {
          */
         PythonDataSet resolve(const int64_t exceptionCode, const std::string& lambda_code, const std::string& pickled_code, PyObject* closureObject=nullptr);
 
-        boost::python::object collect();
+        boost::python::object collect(bool incremental = false);
         boost::python::object take(const int64_t numRows);
         void show(const int64_t numRows=-1);
 

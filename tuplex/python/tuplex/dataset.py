@@ -99,15 +99,19 @@ class DataSet:
         ds._dataSet = self._dataSet.filter(code, cloudpickle.dumps(ftor), g)
         return ds
 
-    def collect(self):
+    def collect(self, incremental=False):
         """ action that generates a physical plan, processes data and collects result then as list of tuples.
+
+        Args:
+            incremental (bool): whether or not to process incrementally with previous results
 
         Returns:
             (list): A list of tuples, or values if the dataset has only one column.
 
         """
         assert self._dataSet is not None, 'internal API error, datasets must be created via context objects'
-        return self._dataSet.collect()
+        assert isinstance(incremental, bool)
+        return self._dataSet.collect(incremental)
 
     def take(self, nrows=5):
         """ action that generates a physical plan, processes data and collects the top results then as list of tuples.

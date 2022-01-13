@@ -135,6 +135,40 @@ TEST_F(CacheTest, NullValueOptIf) {
     ASSERT_EQ(vIA.size(), 11);
 }
 
+TEST_F(CacheTest, Playground) {
+    using namespace tuplex;
+    using namespace std;
+
+    auto opt_nopt = microTestOptions();
+    // enable NullValue Optimization
+    opt_nopt.set("tuplex.useLLVMOptimizer", "true");
+    opt_nopt.set("tuplex.optimizer.generateParser", "true");
+    opt_nopt.set("tuplex.executorCount", "0");
+    opt_nopt.set("tuplex.optimizer.mergeExceptionsInOrder", "false");
+    opt_nopt.set("tuplex.optimizer.nullValueOptimization", "true");
+    opt_nopt.set("tuplex.normalcaseThreshold", "0.6"); // set higher, so optimization is more aggressive.
+
+    // whether to use compiled functor or not
+    opt_nopt.set("tuplex.resolveWithInterpreterOnly", "true");
+
+    Context c(opt_nopt);
+
+    std::stringstream ss;
+    ss << "A, B\n";
+    ss << "1, 2\n";
+    ss << "3, 4\n";
+    ss << ",-1\n";
+    ss << "5, 6\n";
+    ss << "7, 8\n";
+    stringToFile(URI(testName + ".csv"), ss.str());
+
+    {
+        auto ds = c.csv(testName + ".csv").cache();
+        auto res = ds.collectAsVector();
+    }
+}
+
+
 TEST_F(CacheTest, NullValueOptIfAlt) {
     // same test as above, but with interpreter to resolve exceptions...
     using namespace tuplex;
@@ -165,10 +199,15 @@ TEST_F(CacheTest, NullValueOptIfAlt) {
     // so it will be rejected! However, more interesting case when reading from files!
     std::stringstream ss;
     ss<<"A, B\n";
-    for(int i = 0; i < 10; ++i)
-        ss<<"10,20\n";
-    ss<<",20\n"; // single non-conforming row, which gets cached separately!
+    for(int i = 0; i < 2; ++i)
+        ss<<"10,10\n";
+    ss<<"20,20\n";
+    ss<<",100\n"; // single non-conforming row, which gets cached separately!
+    for(int i = 0; i < 2; ++i)
+        ss<<"20,20\n";
     stringToFile(URI(testName + ".csv"), ss.str());
+
+    auto res = c.csv(testName + ".csv").cache().filter(UDF("lambda x, y: y == 100 or y == 20")).collectAsVector();
 
     // => cache materializes both normal and exceptional case in memory
     // => this can be then used to speed up processing!

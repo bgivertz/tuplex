@@ -401,9 +401,11 @@ default:
         // not all codes qualify for reprocessing => only internals should get reprocessed!
         // => other error codes are "true" exceptions
         // => if it's a true exception, simply save it again as exception.
-        bool potentiallyHasResolverOnSlowPath = !_operatorIDsAffectedByResolvers.empty() &&
-                                                std::binary_search(_operatorIDsAffectedByResolvers.begin(),
-                                                                   _operatorIDsAffectedByResolvers.end(), operatorID);
+//        bool potentiallyHasResolverOnSlowPath = !_operatorIDsAffectedByResolvers.empty() &&
+//                                                std::binary_search(_operatorIDsAffectedByResolvers.begin(),
+//                                                                   _operatorIDsAffectedByResolvers.end(), operatorID);
+
+        bool potentiallyHasResolverOnSlowPath = true;
         if(!requiresInterpreterReprocessing(i64ToEC(ecCode)) && !potentiallyHasResolverOnSlowPath) {
             // TODO: check with resolvers!
             // i.e., we can directly save this as exception IF code is not an interpreter code
@@ -902,13 +904,12 @@ default:
             }
         }
 
-        size_t pyObjectsProcessed = 0;
         const uint8_t **ptr;
         while (ePtr && pyPtr) {
             auto eRowInd = *((int64_t *) ePtr);
             auto pyRowInd = *((int64_t *) pyPtr);
             bool isException = false;
-            if (eRowInd + pyObjectsProcessed < pyRowInd) {
+            if (eRowInd + _pyObjectsProcessed < pyRowInd) {
                 ptr = &ePtr;
                 eRemaining--;
                 isException = true;
@@ -916,7 +917,7 @@ default:
                 ptr = &pyPtr;
                 pyRemaining--;
                 pyTotal--;
-                pyObjectsProcessed++;
+                _pyObjectsProcessed++;
             }
 
             const uint8_t *ebuf = nullptr;
@@ -924,9 +925,6 @@ default:
             size_t eSize = 0;
             auto delta = deserializeExceptionFromMemory(*ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
                                                         &eSize);
-
-            if (isException)
-                _currentRowNumber += pyObjectsProcessed;
 
             processExceptionRow(ecCode, operatorID, ebuf, eSize);
             *ptr += delta;
@@ -962,7 +960,6 @@ default:
             size_t eSize = 0;
             auto delta = deserializeExceptionFromMemory(ePtr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
                                                         &eSize);
-            _currentRowNumber += pyObjectsProcessed;
             processExceptionRow(ecCode, operatorID, ebuf, eSize);
             ePtr += delta;
             _rowNumber++;

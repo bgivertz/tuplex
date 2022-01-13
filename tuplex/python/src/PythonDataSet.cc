@@ -22,7 +22,7 @@
 #endif
 
 namespace tuplex {
-    boost::python::object PythonDataSet::collect() {
+    boost::python::object PythonDataSet::collect(bool incremental) {
 
         // make sure a dataset is wrapped
         assert(this->_dataset);
@@ -45,7 +45,7 @@ namespace tuplex {
             std::shared_ptr<ResultSet> rs;
             std::string err_message = "";
             try {
-                rs = _dataset->collect(ss);
+                rs = _dataset->collect(ss, incremental);
                 if(!rs)
                     throw std::runtime_error("invalid result set");
                 // if there are more than 1 million (100k in debug mode) elements print message...

@@ -261,13 +261,13 @@ namespace tuplex {
         void setColumns(const std::vector<std::string> &columnNames) { _columnNames = columnNames; }
 
         // these are actions that cause execution
-        virtual std::shared_ptr<ResultSet> collect(std::ostream &os = std::cout);
+        virtual std::shared_ptr<ResultSet> collect(std::ostream &os = std::cout, bool incremental = false);
 
-        virtual std::shared_ptr<ResultSet> take(int64_t numElements, std::ostream &os = std::cout);
+        virtual std::shared_ptr<ResultSet> take(int64_t numElements, std::ostream &os = std::cout, bool incremental = false);
 
-        virtual std::vector<Row> collectAsVector(std::ostream &os = std::cout);
+        virtual std::vector<Row> collectAsVector(std::ostream &os = std::cout, bool incremental = false);
 
-        virtual std::vector<Row> takeAsVector(int64_t numElements, std::ostream &os = std::cout);
+        virtual std::vector<Row> takeAsVector(int64_t numElements, std::ostream &os = std::cout, bool incremental = false);
 
         /*!
          * saves dataset to file. There are multiple options to control the behavior

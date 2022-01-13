@@ -86,6 +86,46 @@ TEST_F(WrapperTest, LambdaBackend) {
 }
 #endif
 
+
+TEST_F(WrapperTest, Playground) {
+    using namespace tuplex;
+    auto opts = testOptions().substr(0, testOptions().size() - 1) + ",\"tuplex.optimizer.mergeExceptionsInOrder\": \"true\"}";
+    PythonContext c("c", "", opts);
+
+    auto listObj = PyList_New(6);
+
+    PyList_SetItem(listObj, 0, PyLong_FromLong(1));
+    PyList_SetItem(listObj, 1, PyLong_FromLong(0));
+    PyList_SetItem(listObj, 2, python::PyString_FromString("a"));
+    PyList_SetItem(listObj, 3, PyLong_FromLong(0));
+    PyList_SetItem(listObj, 4, python::PyString_FromString("b"));
+    PyList_SetItem(listObj, 5, PyLong_FromLong(2));
+
+    {
+        auto list = boost::python::list(boost::python::handle<>(listObj));
+
+        auto ds = c.parallelize(list);
+
+        auto res1 = ds
+                .map("lambda x: 1 // x if x == 0 else x", "")
+                .collect();
+
+        // Get info that use retriggered jupyter cell
+
+        auto res2 = ds
+                .map("lambda x: 1 // x if x == 0 else x", "")
+                .resolve(ecToI64(ExceptionCode::ZERODIVISIONERROR), "lambda x: -1", "")
+                .collect(true);
+
+        PyObject_Print(res1.ptr(), stdout, 0);
+        printf("\n");
+
+        PyObject_Print(res2.ptr(), stdout, 0);
+        printf("\n");
+    }
+
+}
+
 // Important detail: RAII of boost python requires call to all boost::python destructors before closing the interpreter.
 
 TEST_F(WrapperTest, StringTuple) {

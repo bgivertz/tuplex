@@ -18,11 +18,12 @@ namespace tuplex {
     class TakeOperator : public LogicalOperator {
     private:
         int64_t _limit;
+        bool _incremental;
     public:
         LogicalOperator *clone() override;
 
     public:
-        TakeOperator(LogicalOperator *parent, const int64_t numElements);
+        TakeOperator(LogicalOperator *parent, const int64_t numElements, bool incremental);
 
         std::string name() override {
             if(_limit < 0 || std::numeric_limits<int64_t>::max() == _limit)
@@ -38,6 +39,8 @@ namespace tuplex {
         bool good() const override;
 
         int64_t limit() { return _limit; }
+
+        bool incremental() { return _incremental; }
 
 
         std::vector<Row> getSample(const size_t num) const override;

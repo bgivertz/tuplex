@@ -12,7 +12,7 @@
 #include <cassert>
 
 namespace tuplex {
-    TakeOperator::TakeOperator(LogicalOperator *parent, const int64_t numElements) : LogicalOperator::LogicalOperator(parent), _limit(numElements) {
+    TakeOperator::TakeOperator(LogicalOperator *parent, const int64_t numElements, bool incremental) : LogicalOperator::LogicalOperator(parent), _limit(numElements), _incremental(incremental) {
         // take schema from parent node
         setSchema(this->parent()->getOutputSchema());
     }
@@ -33,7 +33,7 @@ namespace tuplex {
 
     LogicalOperator *TakeOperator::clone() {
         // create clone of this operator
-        auto copy = new TakeOperator(parent()->clone(), _limit);
+        auto copy = new TakeOperator(parent()->clone(), _limit, _incremental);
 
         copy->setDataSet(getDataSet()); // weak ptr to old dataset...
         copy->copyMembers(this);

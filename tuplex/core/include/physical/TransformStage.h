@@ -158,6 +158,8 @@ namespace tuplex {
          */
         std::vector<int64_t> operatorIDsWithResolvers() const { return _operatorIDsWithResolvers; }
 
+        void setOperatorIDsWithResolvers(const std::vector<int64_t> &ops) { _operatorIDsWithResolvers = ops; }
+
         URI outputURI() const { return _outputURI; }
 
         /*!
@@ -303,6 +305,17 @@ namespace tuplex {
         EndPointMode outputMode() const override { return _outputMode; }
         EndPointMode inputMode() const override { return _inputMode; }
 
+        void setOutputPartitions(const std::vector<Partition*>& outputPartitions) { _outputPartitions = outputPartitions; }
+        void setRuntimeExceptions(const std::vector<Partition*>& exceptions) { _exceptions = exceptions; }
+        void setLastPyObjects(const std::vector<std::tuple<size_t, PyObject*>> &pyObjects) { _lastPyObjects = pyObjects; }
+        void setLastGeneralCase(const std::vector<Partition*>& generalCase) { _lastGeneralCase = generalCase; }
+
+        std::vector<Partition*> runtimeExceptions() { return _exceptions; }
+        std::vector<Partition*> outputPartitions() { return _outputPartitions; }
+        std::vector<Partition*> lastGeneralCase() { return _lastGeneralCase; }
+        std::vector<std::tuple<size_t, PyObject*>> lastPyObjects() { return _lastPyObjects; }
+
+
         struct InitData {
             int64_t numArgs;
             uint8_t** hash_maps;
@@ -447,6 +460,10 @@ namespace tuplex {
 
         std::vector<int64_t> _operatorIDsWithResolvers;
 
+        std::vector<Partition*> _lastGeneralCase;
+        std::vector<std::tuple<size_t, PyObject *>> _lastPyObjects;
+        std::vector<Partition*> _outputPartitions;
+        std::vector<Partition*> _exceptions;
         std::vector<Partition*> _inputPartitions; //! memory input partitions for this task.
         size_t                  _inputLimit; //! limit number of input rows (inf per default)
         size_t                  _outputLimit; //! output limit, set e.g. by take, to_csv etc. (inf per default)

@@ -28,6 +28,7 @@ namespace tuplex {
     Context::Context(const ContextOptions& options) : _datasetIDGenerator(0), _compilePolicy(compilePolicyFromOptions(options)) {
         // init metrics
         _lastJobMetrics = std::make_unique<JobMetrics>();
+        _incrementalCache = std::make_unique<IncrementalCache>();
         // make sure this is called without holding the GIL
         if(python::isInterpreterRunning())
             assert(!python::holdsGIL());
@@ -99,6 +100,17 @@ namespace tuplex {
             delete op;
             op = nullptr;
         }
+    }
+
+
+    void Context::addIncrementalCacheEntry(const std::vector<Partition *> &partitions,
+                                           const std::vector<Partition*>& generalCase,
+                                           const std::vector<std::tuple<size_t, PyObject*>>& pyObjects,
+                                           const std::vector<Partition*>& remainingExceptions) const {
+        _incrementalCache->setLastPartitions(partitions);
+        _incrementalCache->setLastGeneralCase(generalCase);
+        _incrementalCache->setLastPyObjects(pyObjects);
+        _incrementalCache->setLastExceptions(remainingExceptions);
     }
 
     Partition* Context::requestNewPartition(const Schema &schema, const int dataSetID, size_t minBytesRequired) {

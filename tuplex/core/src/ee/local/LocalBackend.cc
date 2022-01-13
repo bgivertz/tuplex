@@ -784,7 +784,8 @@ namespace tuplex {
         // Note: file names & sizes are also saved in input partition!
         if (tstage->inputMode() != EndPointMode::HASHTABLE
             && tstage->predecessors().empty()
-            && tstage->inputPartitions().empty()) {
+            && tstage->inputPartitions().empty()
+            && tstage->outputPartitions().empty()) {
             tstage->setEmptyResult();
             return;
         }
@@ -874,184 +875,230 @@ namespace tuplex {
             }
         }
 
-        auto tasks = createLoadAndTransformToMemoryTasks(tstage, _options, syms.get());
-        auto completedTasks = performTasks(tasks);
+        std::vector<IExecutorTask*> completedTasks;
+        size_t numInputRows = 0;
+        bool firstRun = tstage->runtimeExceptions().size() == 0 && tstage->outputPartitions().size() == 0 && tstage->lastPyObjects().size() == 0 && tstage->lastGeneralCase().size() == 0;
+        if (firstRun) {
 
-        // Note: this doesn't work yet because of the globals.
-        // to make this work, need better global mapping...
+            auto tasks = createLoadAndTransformToMemoryTasks(tstage, _options, syms.get());
+            completedTasks = performTasks(tasks);
+
+            // Note: this doesn't work yet because of the globals.
+            // to make this work, need better global mapping...
 //        auto completedTasks = performTasks(tasks, [&syms, &optimizer, &tstage, this]() {
 //            // TODO/Note: could prepare code of parent stage already while current one is running! I.e. do this for the first dependent only to avoid conflicts...
 //            syms = tstage->compile(*_compiler, _options.USE_LLVM_OPTIMIZER() ? &optimizer : nullptr, false);
 //        });
 
-        // calc number of input rows and total wall clock time
-        size_t numInputRows = 0;
-        double totalWallTime = 0.0;
-        for(auto task : completedTasks) {
-            numInputRows += task->getNumInputRows();
-            totalWallTime += task->wallTime();
-        }
-
-        {
-            std::stringstream ss;
-            ss<<"[Transform Stage] Stage "<<tstage->number()<<" completed "<<completedTasks.size()<<" load&transform tasks in "<<timer.time()<<"s";
-            Logger::instance().defaultLogger().info(ss.str());
-        }
-
-        {
-            std::stringstream ss;
-            double time_per_fast_path_row_in_ms = totalWallTime / numInputRows * 1000.0;
-            ss<<"[Transform Stage] Stage "<<tstage->number()<<" total wall clock time: "
-              <<totalWallTime<<"s, "<<pluralize(numInputRows, "input row")
-              <<", time to process 1 row via fast path: "<<time_per_fast_path_row_in_ms<<"ms";
-            Logger::instance().defaultLogger().info(ss.str());
-
-            // fast path
-            metrics.setFastPathTimes(tstage->number(), totalWallTime, timer.time(), time_per_fast_path_row_in_ms * 1000000.0);
-        }
-
-        // -------------------------------------------------------------------
-        // 3.) check for exceptions + updates + resolution
-        timer.reset();
-        auto ecountsBeforeResolution = calcExceptionCounts(completedTasks);
-        auto totalECountsBeforeResolution = totalExceptionCounts(ecountsBeforeResolution);
-
-        // NEW: resolve using either 1) slow generated code path or 2) pure python code path (interpreter)
-        // => there are fallback mechanisms...
-
-        bool executeSlowPath = true;
-        //TODO: implement pure python resolution here...
-        // exceptions found or slowpath data given?
-        if(totalECountsBeforeResolution > 0 || !tstage->inputExceptions().empty() || !tstage->pythonObjects().empty()) {
-            stringstream ss;
-            // log out what exists in a table
-            ss<<"Exception details: "<<endl;
-
-            bool normalCaseViolationFound = false;
-            bool badParseInputFound = false;
-
-            vector<string> headers{"OperatorID", "Exception", "Count"};
-            vector<Row> lines;
-            if(totalECountsBeforeResolution) {
-                for(auto keyval : ecountsBeforeResolution) {
-                    auto opid = std::get<0>(keyval.first);
-                    auto ec = std::get<1>(keyval.first);
-
-                    if(ec == ExceptionCode::NORMALCASEVIOLATION)
-                        normalCaseViolationFound = true;
-                    if(ec == ExceptionCode::BADPARSE_STRING_INPUT)
-                        badParseInputFound = true;
-
-                    lines.push_back(Row((int64_t)opid, exceptionCodeToPythonClass(ec), (int64_t)keyval.second));
-                }
-            }
-            // input partitions given?
-            if(!tstage->inputExceptions().empty()) {
-                size_t numSlowPath = 0;
-                for(auto& p : tstage->inputExceptions())
-                    numSlowPath += p->getNumRows();
-                lines.push_back(Row("(cached)", exceptionCodeToPythonClass(ExceptionCode::NORMALCASEVIOLATION), (int64_t)numSlowPath));
-                totalECountsBeforeResolution += numSlowPath;
+            // calc number of input rows and total wall clock time
+            numInputRows = 0;
+            double totalWallTime = 0.0;
+            for (auto task: completedTasks) {
+                numInputRows += task->getNumInputRows();
+                totalWallTime += task->wallTime();
             }
 
-            if(!tstage->pythonObjects().empty()) {
-                size_t numPyObjs = 0;
-                for (auto &p : tstage->pythonObjects())
-                    numPyObjs += p->getNumRows();
-                lines.push_back(Row("(parallelize)", exceptionCodeToPythonClass(ExceptionCode::NORMALCASEVIOLATION), (int64_t)numPyObjs));
-                totalECountsBeforeResolution += numPyObjs;
+            {
+                std::stringstream ss;
+                ss << "[Transform Stage] Stage " << tstage->number() << " completed " << completedTasks.size()
+                   << " load&transform tasks in " << timer.time() << "s";
+                Logger::instance().defaultLogger().info(ss.str());
             }
 
-            printTable(ss, headers, lines, false);
-            auto msg = ss.str(); trim(msg);
-            Logger::instance().defaultLogger().info(msg);
-            ss.str("");
+            {
+                std::stringstream ss;
+                double time_per_fast_path_row_in_ms = totalWallTime / numInputRows * 1000.0;
+                ss << "[Transform Stage] Stage " << tstage->number() << " total wall clock time: "
+                   << totalWallTime << "s, " << pluralize(numInputRows, "input row")
+                   << ", time to process 1 row via fast path: " << time_per_fast_path_row_in_ms << "ms";
+                Logger::instance().defaultLogger().info(ss.str());
 
-            // resolution
-            // => for optimization purposes we might want to keep cases separate (cache operator)
-            //    whereas for other purposes (hashing) we need to combine cases together
-            if(tstage->persistSeparateCases()) {
-                // deactivate merging in order
-                merge_except_rows = false;
+                // fast path
+                metrics.setFastPathTimes(tstage->number(), totalWallTime, timer.time(),
+                                         time_per_fast_path_row_in_ms * 1000000.0);
             }
 
-            // were initial exceptions (general case) given?
-            if(!tstage->inputExceptions().empty() && merge_except_rows) {
-                auto err_msg = "when using cache with normal/general optimization, set mergeRowsInOrder=false. Not yet supported";
-                logger().error(err_msg);
-                throw std::runtime_error(err_msg);
-            }
+            // -------------------------------------------------------------------
+            // 3.) check for exceptions + updates + resolution
+            timer.reset();
+            auto ecountsBeforeResolution = calcExceptionCounts(completedTasks);
+            auto totalECountsBeforeResolution = totalExceptionCounts(ecountsBeforeResolution);
 
-            // should slow path get executed
-            executeSlowPath = syms->resolveFunctor || !tstage->purePythonCode().empty();
+            // NEW: resolve using either 1) slow generated code path or 2) pure python code path (interpreter)
+            // => there are fallback mechanisms...
 
-            // any ops with resolver IDs?
-            if(executeSlowPath && !tstage->operatorIDsWithResolvers().empty())
-                executeSlowPath = true;
-            else
-                executeSlowPath = false;
+            bool executeSlowPath = true;
+            //TODO: implement pure python resolution here...
+            // exceptions found or slowpath data given?
+            if (totalECountsBeforeResolution > 0 || !tstage->inputExceptions().empty() ||
+                !tstage->pythonObjects().empty()) {
+                stringstream ss;
+                // log out what exists in a table
+                ss << "Exception details: " << endl;
 
-            // any normalcase violation or parseinput?
-            if(badParseInputFound || normalCaseViolationFound)
-                executeSlowPath = true;
+                bool normalCaseViolationFound = false;
+                bool badParseInputFound = false;
 
-            // input exceptions or py objects?
-            if(!tstage->inputExceptions().empty() || !tstage->pythonObjects().empty())
-                executeSlowPath = true;
+                vector<string> headers{"OperatorID", "Exception", "Count"};
+                vector<Row> lines;
+                if (totalECountsBeforeResolution) {
+                    for (auto keyval: ecountsBeforeResolution) {
+                        auto opid = std::get<0>(keyval.first);
+                        auto ec = std::get<1>(keyval.first);
 
-            if(executeSlowPath) {
-                // only if functor or python is available, else there is simply no slow path to resolve!
-                if(syms->resolveFunctor || !tstage->purePythonCode().empty()) {
-                    using namespace  std;
+                        if (ec == ExceptionCode::NORMALCASEVIOLATION)
+                            normalCaseViolationFound = true;
+                        if (ec == ExceptionCode::BADPARSE_STRING_INPUT)
+                            badParseInputFound = true;
 
-                    // if resolution via compiled slow path is deactivated, use always the interpreter
-                    // => this can be achieved by setting functor to nullptr!
-                    auto resolveFunctor = _options.RESOLVE_WITH_INTERPRETER_ONLY() ? nullptr : syms->resolveFunctor;
-
-                    // cout<<"*** num tasks before resolution: "<<completedTasks.size()<<" ***"<<endl;
-                    completedTasks = resolveViaSlowPath(completedTasks, merge_except_rows, resolveFunctor, tstage, combineOutputHashmaps);
-                    // cout<<"*** num tasks after resolution: "<<completedTasks.size()<<" ***";
-                }
-
-                // @TODO: if IO thing is deactivated, then need to process exceptions from previous stage as well via slow path...
-                // => a cache operator would be really, really much smarter...
-
-                auto ecountsAfterResolution = calcExceptionCounts(completedTasks);
-                auto totalECountsAfterResolution = totalExceptionCounts(ecountsAfterResolution);
-
-                double slow_path_total_time = timer.time();
-                ss.str("");
-                ss<<"slow path resolved "<<(totalECountsBeforeResolution - totalECountsAfterResolution)<<"/"<<totalECountsBeforeResolution<< " exceptions ";
-                ss<<"in "<<slow_path_total_time<<"s";
-                logger().info(ss.str());
-
-
-                totalWallTime = 0.0;
-                size_t slowPathNumInputRows = 0;
-                for(auto task : completedTasks) {
-                    if(task->type() == TaskType::RESOLVE) {
-                        totalWallTime += task->wallTime();
-                        slowPathNumInputRows += task->getNumInputRows();
+                        lines.push_back(Row((int64_t) opid, exceptionCodeToPythonClass(ec), (int64_t) keyval.second));
                     }
                 }
-                double time_per_row_slow_path_ms = totalWallTime / slowPathNumInputRows * 1000.0;
+                // input partitions given?
+                if (!tstage->inputExceptions().empty()) {
+                    size_t numSlowPath = 0;
+                    for (auto &p: tstage->inputExceptions())
+                        numSlowPath += p->getNumRows();
+                    lines.push_back(Row("(cached)", exceptionCodeToPythonClass(ExceptionCode::NORMALCASEVIOLATION),
+                                        (int64_t) numSlowPath));
+                    totalECountsBeforeResolution += numSlowPath;
+                }
 
-                // print timing info for slow path
+                if (!tstage->pythonObjects().empty()) {
+                    size_t numPyObjs = 0;
+                    for (auto &p: tstage->pythonObjects())
+                        numPyObjs += p->getNumRows();
+                    lines.push_back(Row("(parallelize)", exceptionCodeToPythonClass(ExceptionCode::NORMALCASEVIOLATION),
+                                        (int64_t) numPyObjs));
+                    totalECountsBeforeResolution += numPyObjs;
+                }
+
+                printTable(ss, headers, lines, false);
+                auto msg = ss.str();
+                trim(msg);
+                Logger::instance().defaultLogger().info(msg);
                 ss.str("");
-                ss<<"slow path for Stage "<<tstage->number()<<": total wall clock time: "<<totalWallTime<<"s, "
-                  <<"time to process 1 row via slow path: "<<time_per_row_slow_path_ms<<"ms";
-                logger().info(ss.str());
-                metrics.setSlowPathTimes(tstage->number(), totalWallTime, slow_path_total_time,
-                                         time_per_row_slow_path_ms * 1000000.0);
-            }
-        }
 
-        // only print out resolve info, when there were exceptions found.
-        if (totalECountsBeforeResolution > 0 && executeSlowPath) {
-            std::stringstream ss;
-            ss << "[Transform Stage] Stage " << tstage->number() << " completed "
-               << pluralize(completedTasks.size(), "resolve task") << " in " << timer.time() << "s";
-            Logger::instance().defaultLogger().info(ss.str());
+                // resolution
+                // => for optimization purposes we might want to keep cases separate (cache operator)
+                //    whereas for other purposes (hashing) we need to combine cases together
+                if (tstage->persistSeparateCases()) {
+                    // deactivate merging in order
+                    merge_except_rows = false;
+                }
+
+                // were initial exceptions (general case) given?
+                if (!tstage->inputExceptions().empty() && merge_except_rows) {
+                    auto err_msg = "when using cache with normal/general optimization, set mergeRowsInOrder=false. Not yet supported";
+                    logger().error(err_msg);
+                    throw std::runtime_error(err_msg);
+                }
+
+                // should slow path get executed
+                executeSlowPath = syms->resolveFunctor || !tstage->purePythonCode().empty();
+
+                // any ops with resolver IDs?
+                if (executeSlowPath && !tstage->operatorIDsWithResolvers().empty())
+                    executeSlowPath = true;
+                else
+                    executeSlowPath = false;
+
+                // any normalcase violation or parseinput?
+                if (badParseInputFound || normalCaseViolationFound)
+                    executeSlowPath = true;
+
+                // input exceptions or py objects?
+                if (!tstage->inputExceptions().empty() || !tstage->pythonObjects().empty())
+                    executeSlowPath = true;
+
+                if (executeSlowPath) {
+                    // only if functor or python is available, else there is simply no slow path to resolve!
+                    if (syms->resolveFunctor || !tstage->purePythonCode().empty()) {
+                        using namespace std;
+
+                        // if resolution via compiled slow path is deactivated, use always the interpreter
+                        // => this can be achieved by setting functor to nullptr!
+                        auto resolveFunctor = _options.RESOLVE_WITH_INTERPRETER_ONLY() ? nullptr : syms->resolveFunctor;
+
+                        // cout<<"*** num tasks before resolution: "<<completedTasks.size()<<" ***"<<endl;
+                        completedTasks = resolveViaSlowPath(completedTasks, merge_except_rows, resolveFunctor, tstage,
+                                                            combineOutputHashmaps);
+                        // cout<<"*** num tasks after resolution: "<<completedTasks.size()<<" ***";
+                    }
+
+                    // @TODO: if IO thing is deactivated, then need to process exceptions from previous stage as well via slow path...
+                    // => a cache operator would be really, really much smarter...
+
+                    auto ecountsAfterResolution = calcExceptionCounts(completedTasks);
+                    auto totalECountsAfterResolution = totalExceptionCounts(ecountsAfterResolution);
+
+                    double slow_path_total_time = timer.time();
+                    ss.str("");
+                    ss << "slow path resolved " << (totalECountsBeforeResolution - totalECountsAfterResolution) << "/"
+                       << totalECountsBeforeResolution << " exceptions ";
+                    ss << "in " << slow_path_total_time << "s";
+                    logger().info(ss.str());
+
+
+                    totalWallTime = 0.0;
+                    size_t slowPathNumInputRows = 0;
+                    for (auto task: completedTasks) {
+                        if (task->type() == TaskType::RESOLVE) {
+                            totalWallTime += task->wallTime();
+                            slowPathNumInputRows += task->getNumInputRows();
+                        }
+                    }
+                    double time_per_row_slow_path_ms = totalWallTime / slowPathNumInputRows * 1000.0;
+
+                    // print timing info for slow path
+                    ss.str("");
+                    ss << "slow path for Stage " << tstage->number() << ": total wall clock time: " << totalWallTime
+                       << "s, "
+                       << "time to process 1 row via slow path: " << time_per_row_slow_path_ms << "ms";
+                    logger().info(ss.str());
+                    metrics.setSlowPathTimes(tstage->number(), totalWallTime, slow_path_total_time,
+                                             time_per_row_slow_path_ms * 1000000.0);
+                }
+            }
+
+            // only print out resolve info, when there were exceptions found.
+            if (totalECountsBeforeResolution > 0 && executeSlowPath) {
+                std::stringstream ss;
+                ss << "[Transform Stage] Stage " << tstage->number() << " completed "
+                   << pluralize(completedTasks.size(), "resolve task") << " in " << timer.time() << "s";
+                Logger::instance().defaultLogger().info(ss.str());
+            }
+        } else {
+            std::vector<IExecutorTask*> resolveTasks;
+
+            for (auto p : tstage->outputPartitions()) {
+                p->unlock();
+            }
+            for (auto p : tstage->runtimeExceptions()) {
+                p->unlock();
+            }
+
+            auto rtask = new ResolveTask(tstage->getID(),
+                                         tstage->outputPartitions(),
+                                         tstage->runtimeExceptions(),
+                                         std::vector<Partition*>{},
+                                         0,
+                                         0,
+                                         0,
+                                         tstage->operatorIDsWithResolvers(),
+                                         tstage->normalCaseInputSchema(),
+                                         tstage->outputSchema(),
+                                         tstage->normalCaseOutputSchema(),
+                                         tstage->outputSchema(),
+                                         merge_except_rows,
+                                         _options.AUTO_UPCAST_NUMBERS(),
+                                         tstage->outputFormat(),
+                                         tstage->csvOutputDelimiter(),
+                                         tstage->csvOutputQuotechar(),
+                                         _options.RESOLVE_WITH_INTERPRETER_ONLY() ? nullptr : syms->resolveFunctor,
+                                         preparePythonPipeline(tstage->purePythonCode(), tstage->pythonPipelineName()));
+            resolveTasks.push_back(rtask);
+            completedTasks = performTasks(resolveTasks);
         }
 
         // -------------------------------------------------------------------
@@ -1118,6 +1165,36 @@ namespace tuplex {
                     for(auto p : taskGeneralOutput)
                         rowDelta += p->getNumRows();
                     rowDelta += taskNonConformingRows.size();
+                }
+
+                if (!firstRun) {
+                    std::vector<std::tuple<size_t, PyObject *>> mergedRows;
+                    auto lastPyObjects = tstage->lastPyObjects();
+                    int i = 0;
+                    int j = 0;
+                    while (i < nonConformingRows.size() && j < lastPyObjects.size()) {
+                        auto iRow = std::get<0>(nonConformingRows[i]);
+                        auto jRow = std::get<0>(lastPyObjects[j]);
+                        if (jRow < iRow) {
+                            mergedRows.push_back(lastPyObjects[j]);
+                            ++j;
+                        } else {
+                            mergedRows.push_back(nonConformingRows[i]);
+                            ++i;
+                        }
+                    }
+
+                    while (i < nonConformingRows.size()) {
+                        mergedRows.push_back(nonConformingRows[i]);
+                        ++i;
+                    }
+
+                    while (j < lastPyObjects.size()) {
+                        mergedRows.push_back(lastPyObjects[j]);
+                        ++j;
+                    }
+
+                    nonConformingRows = mergedRows;
                 }
 
                 tstage->setMemoryResult(output, generalOutput, nonConformingRows, remainingExceptions, ecounts);

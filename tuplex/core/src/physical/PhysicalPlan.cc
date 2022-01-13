@@ -202,11 +202,16 @@ namespace tuplex {
             }
         }
 
+        bool useIncrementalCache = false;
         if(ops.back()->isActionable()) {
             if(ops.back()->type() == LogicalOperatorType::FILEOUTPUT)
                 outputMode = EndPointMode::FILE;
             else if(ops.back()->type() == LogicalOperatorType::TAKE || ops.back()->type() == LogicalOperatorType::CACHE) {
                // memory?
+               if (ops.back()->type() == LogicalOperatorType::TAKE) {
+                   useIncrementalCache = ((TakeOperator *) ops.back())->incremental();
+               }
+
                outputMode = EndPointMode::MEMORY;
             } else
                 throw std::runtime_error("unknown actionable operator " + ops.back()->name() + " found");
@@ -390,9 +395,17 @@ namespace tuplex {
         // fill in data to start processing from operators.
         if (inputNode->type() == LogicalOperatorType::PARALLELIZE) {
             auto pop = dynamic_cast<ParallelizeOperator *>(inputNode); assert(inputNode);
-            stage->setInputPartitions(pop->getPartitions());
-            stage->setPythonObjects(pop->getPythonObjects());
-            stage->setInputPartitionToPythonObjectsMap(pop->getInputPartitionToPythonObjectsMap());
+            if (useIncrementalCache) {
+                auto cache = getContext().incrementalCache();
+                stage->setRuntimeExceptions(cache.lastExceptions());
+                stage->setOutputPartitions(cache.lastPartitions());
+                stage->setLastPyObjects(cache.lastPyObjects());
+                stage->setLastGeneralCase(cache.lastGeneralCase());
+            } else {
+                stage->setInputPartitions(pop->getPartitions());
+                stage->setPythonObjects(pop->getPythonObjects());
+                stage->setInputPartitionToPythonObjectsMap(pop->getInputPartitionToPythonObjectsMap());
+            }
         } else if(inputNode->type() == LogicalOperatorType::CACHE) {
             auto cop = dynamic_cast<CacheOperator*>(inputNode);  assert(inputNode);
             stage->setInputPartitions(cop->cachedPartitions());

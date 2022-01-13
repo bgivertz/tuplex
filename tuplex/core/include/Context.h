@@ -27,6 +27,7 @@
 #include <graphviz/GraphVizBuilder.h>
 #include <ee/IBackend.h>
 #include "JobMetrics.h"
+#include <IncrementalCache.h>
 
 
 namespace tuplex {
@@ -37,6 +38,7 @@ namespace tuplex {
     class Executor;
     class Partition;
     class IBackend;
+    class IncrementalCache;
 
     class Context {
     private:
@@ -70,6 +72,8 @@ namespace tuplex {
         std::string _name;
 
         std::shared_ptr<JobMetrics> _lastJobMetrics;
+
+        std::shared_ptr<IncrementalCache> _incrementalCache;
 
         codegen::CompilePolicy _compilePolicy;
         codegen::CompilePolicy compilePolicyFromOptions(const ContextOptions& options);
@@ -189,6 +193,11 @@ namespace tuplex {
         DataSet& orc(const std::string &pattern,
                      const std::vector<std::string>& columns=std::vector<std::string>());
 
+        void addIncrementalCacheEntry(const std::vector<Partition *> &partitions,
+                                      const std::vector<Partition*>& generalCase,
+                                      const std::vector<std::tuple<size_t, PyObject*>>& pyObjects,
+                                      const std::vector<Partition*>& remainingExceptions) const;
+
         /*!
          * creates an error dataset
          * @param error
@@ -227,6 +236,14 @@ namespace tuplex {
             if (!_lastJobMetrics)
                 const_cast<Context *>(this)->_lastJobMetrics.reset(new JobMetrics());
             return *_lastJobMetrics.get();
+        }
+
+        /*!
+         * gets a IncrementalCache object
+         * @return address to IncrementalCache object
+         */
+        IncrementalCache& incrementalCache() const {
+            return *_incrementalCache.get();
         }
 
         /*!

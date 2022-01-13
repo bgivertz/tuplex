@@ -126,6 +126,12 @@ namespace tuplex {
         setExceptionCounts(ecounts);
         _unresolved_exceptions = generalCase;
 
+        PhysicalStage::plan()->getContext().addIncrementalCacheEntry(
+                partitions,
+                generalCase,
+                interpreterRows,
+                remainingExceptions);
+
         if (partitions.empty() && interpreterRows.empty() && generalCase.empty())
             _rs = emptyResultSet();
         else {
