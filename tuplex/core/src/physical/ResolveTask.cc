@@ -874,7 +874,7 @@ default:
         size_t curRuntimePartitionInd = 0; // current index into vector of runtime exception partitions
         int64_t numRuntimeRowsLeftInPartition = 0; // number of rows remaining in partition
         const uint8_t *runPtr = nullptr;
-        if (_runtimeExceptions.size() > 0) {
+        if (_numRuntimeExceptions > 0) {
             curRuntimePartitionInd = 0;
             numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows() - _runtimeExceptionRowOffset;
             runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock() + _runtimeExceptionByteOffset;
@@ -973,11 +973,11 @@ default:
 
             numRuntimeRowsLeftInPartition--;
             // Exhausted current runtime exceptions in partitions need to switch partitions or could be done
-            if (numRuntimeRowsLeftInPartition == 0 || inputRowsProcessed == _numInputExceptions) {
+            if (numRuntimeRowsLeftInPartition == 0 || runtimeRowsProcessed == _numRuntimeExceptions) {
                 _runtimeExceptions[curRuntimePartitionInd]->unlock();
                 curRuntimePartitionInd++;
                 // More exceptions to process
-                if (curRuntimePartitionInd < _runtimeExceptions.size() && inputRowsProcessed < _numInputExceptions) {
+                if (curRuntimePartitionInd < _runtimeExceptions.size() && runtimeRowsProcessed < _numRuntimeExceptions) {
                     numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows();
                     runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock();
                 } else {
