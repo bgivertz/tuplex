@@ -1400,6 +1400,9 @@ namespace tuplex {
 
                 assert(tt->getStageID() == stageID);
 
+                // On first execution, taks hold their own runtime exceptions so they can iterate over all partitions fully
+                auto runtimeExceptionInfo = ExceptionInfo(tt->getNumExceptions(), 0, 0, 0);
+
                 // this task needs to be resolved, b.c. exceptions occurred...
                 // pretty simple, just create a ResolveTask
                 auto exceptionInputSchema = tt->inputSchema(); // this could be specialized!
@@ -1407,6 +1410,7 @@ namespace tuplex {
                                              tstage->context().id(),
                                              tt->getOutputPartitions(),
                                              tt->getExceptionPartitions(),
+                                             runtimeExceptionInfo,
                                              tt->inputExceptions(),
                                              tt->inputExceptionInfo(),
                                              opsToCheck,
@@ -1497,6 +1501,8 @@ namespace tuplex {
         auto resolvedTasks = performTasks(resolveTasks);
         // cout<<"*** git "<<resolvedTasks.size()<<" resolve tasks ***"<<endl;
         std::copy(resolvedTasks.cbegin(), resolvedTasks.cend(), std::back_inserter(tasks_result));
+
+        // TODO: Invalidate runtime exception partitions
 
         // Invalidate partitions after all resolve tasks execute because shared among tasks
         for (auto& p : tstage->inputExceptions()) {

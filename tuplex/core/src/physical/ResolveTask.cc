@@ -711,7 +711,7 @@ default:
         }
 
         // abort if no exceptions!
-        if(_runtimeExceptions.empty() && _numInputExceptions == 0)
+        if(_numRuntimeExceptions == 0 && _numInputExceptions == 0)
             return;
 
         // special case: no functor & no python pipeline functor given
@@ -742,46 +742,35 @@ default:
             // merge exceptions with normal rows after calling slow code over them...
             // basic idea is go over all exception partitions, execute row wise the resolution function
             // and merge the result back to the partitions
-            for(auto partition : _runtimeExceptions) {
-                const uint8_t *ptr = partition->lockRaw();
-                int64_t numRows = *((int64_t *) ptr);
-                ptr += sizeof(int64_t);
+            if (_numRuntimeExceptions > 0) {
+                // Initialize runtime exception to starting index
+                auto partition = _runtimeExceptions[_runtimeExceptionIndex];
+                auto rowsLeftInPartition = partition->getNumRows() - _runtimeExceptionRowOffset;
+                const uint8_t *ptr = partition->lock() + _runtimeExceptionByteOffset;
 
-                for(int i = 0; i < numRows; ++i) {
-                    // old
-                    // _currentRowNumber = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t ecCode = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t operatorID = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
-                    // int64_t eSize = *((int64_t*)ptr);
-                    // ptr += sizeof(int64_t);
+                // Iterate over all runtime exceptions, may be accross multiple partitions
+                for (int i = 0; i < _numRuntimeExceptions; ++i) {
+                    // Change partition once exhausted
+                    if (rowsLeftInPartition == 0) {
+                        partition->unlock();
+                        _runtimeExceptionIndex++;
+                        partition = _runtimeExceptions[_runtimeExceptionIndex];
+                        rowsLeftInPartition = partition->getNumRows();
+                        ptr = partition->lock();
+                    }
 
                     const uint8_t *ebuf = nullptr;
                     int64_t ecCode = -1, operatorID = -1;
                     size_t eSize = 0;
                     auto delta = deserializeExceptionFromMemory(ptr, &ecCode, &operatorID, &_currentRowNumber, &ebuf,
                                                                 &eSize);
-
-
-                    // call functor over this...
-                    // ==> important to use row number here for continuous exception resolution!
-                    // args are: "userData",  "rowNumber", "exceptionCode", "rowBuf", "bufSize"
-
                     processExceptionRow(ecCode, operatorID, ebuf, eSize);
-
                     ptr += delta;
-                    // old
-                    //ptr += eSize;
-
-                    // always inc row number
                     _rowNumber++;
+                    rowsLeftInPartition--;
                 }
+                // Unlock but wait to invalidate until all resolve tasks have finished
                 partition->unlock();
-
-                // exception partition is done or exceptions are transferred to new partition...
-                partition->invalidate();
             }
 
             // now process all of the input exceptions
@@ -887,8 +876,8 @@ default:
         const uint8_t *runPtr = nullptr;
         if (_runtimeExceptions.size() > 0) {
             curRuntimePartitionInd = 0;
-            numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows();
-            runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock();
+            numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows() - _runtimeExceptionRowOffset;
+            runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock() + _runtimeExceptionByteOffset;
         }
 
         // Initialize input exception variables
@@ -906,20 +895,23 @@ default:
         // runtime exceptions do not account for the existence of input exceptions, so we need to add the previous
         // input exceptions to compare the true row number
         size_t inputRowsProcessed = 0;
+        size_t runtimeRowsProcessed = 0;
         const uint8_t *ptr = nullptr;
         while (runPtr && inputPtr) {
             auto runRowInd = *((int64_t *) runPtr); // get current runtime row index
             auto inputRowInd = *((int64_t *) inputPtr); // get current input row index
-            bool isRuntimeException = false;
+            bool isRuntimeException;
             // compare indices with accounting for previous input exceptions
             if (runRowInd + inputRowsProcessed < inputRowInd) {
                 ptr = runPtr;
                 numRuntimeRowsLeftInPartition--;
+                runtimeRowsProcessed++;
                 isRuntimeException = true;
             } else {
                 ptr = inputPtr;
                 numInputRowsLeftInPartition--;
                 inputRowsProcessed++;
+                isRuntimeException = false;
             }
 
             const uint8_t *ebuf = nullptr;
@@ -939,12 +931,11 @@ default:
             _rowNumber++;
 
             // Exhausted current runtime exceptions, need to switch partitions
-            if (numRuntimeRowsLeftInPartition == 0) {
+            if (numRuntimeRowsLeftInPartition == 0 || runtimeRowsProcessed == _numRuntimeExceptions) {
                 _runtimeExceptions[curRuntimePartitionInd]->unlock();
-                _runtimeExceptions[curRuntimePartitionInd]->invalidate();
                 curRuntimePartitionInd++;
                 // Still have more exceptions to go through
-                if (curRuntimePartitionInd < _runtimeExceptions.size()) {
+                if (curRuntimePartitionInd < _runtimeExceptions.size() && runtimeRowsProcessed < _numRuntimeExceptions) {
                     numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows();
                     runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock();
                 } else {
@@ -982,12 +973,11 @@ default:
 
             numRuntimeRowsLeftInPartition--;
             // Exhausted current runtime exceptions in partitions need to switch partitions or could be done
-            if (numRuntimeRowsLeftInPartition == 0) {
+            if (numRuntimeRowsLeftInPartition == 0 || inputRowsProcessed == _numInputExceptions) {
                 _runtimeExceptions[curRuntimePartitionInd]->unlock();
-                _runtimeExceptions[curRuntimePartitionInd]->invalidate();
                 curRuntimePartitionInd++;
                 // More exceptions to process
-                if (curRuntimePartitionInd < _runtimeExceptions.size()) {
+                if (curRuntimePartitionInd < _runtimeExceptions.size() && inputRowsProcessed < _numInputExceptions) {
                     numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows();
                     runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock();
                 } else {
