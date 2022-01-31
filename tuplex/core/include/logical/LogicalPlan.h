@@ -33,6 +33,12 @@ namespace tuplex {
         void emitPartialFilters();
         void reorderDataProcessingOperators();
 
+        /*!
+         * prepare pipeline for incremental resolution if the option is set
+         * @param context
+         */
+        void incrementalResolution(const Context &context);
+
     public:
 
         LogicalPlan() = delete;

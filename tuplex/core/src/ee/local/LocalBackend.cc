@@ -856,7 +856,7 @@ namespace tuplex {
         // special case: skip stage, i.e. empty code and mem2mem
         if(tstage->code().empty() &&  !tstage->fileInputMode() && !tstage->fileOutputMode()) {
             auto pyObjects = inputExceptionsToPythonObjects(tstage->inputExceptions(), tstage->normalCaseInputSchema());
-            tstage->setMemoryResult(tstage->inputPartitions(), std::vector<Partition*>{}, std::unordered_map<std::string, ExceptionInfo>(), pyObjects);
+            tstage->setMemoryResult(tstage->inputPartitions(), pyObjects);
             pyObjects.clear();
             // skip stage
             Logger::instance().defaultLogger().info("[Transform Stage] skipped stage " + std::to_string(tstage->number()) + " because there is nothing todo here.");
@@ -1170,7 +1170,8 @@ namespace tuplex {
                     rowDelta += taskNonConformingRows.size();
                 }
 
-                tstage->setMemoryResult(output, generalOutput, partitionToExceptionsMap, nonConformingRows, remainingExceptions, ecounts);
+                // TODO: Set correct exceptions map
+                tstage->setMemoryResult(output, nonConformingRows, remainingExceptions, std::unordered_map<std::string, ExceptionInfo>(), generalOutput, partitionToExceptionsMap, ecounts);
                 break;
             }
             case EndPointMode::HASHTABLE: {

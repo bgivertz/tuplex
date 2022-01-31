@@ -14,6 +14,7 @@
 #include <Schema.h>
 #include <Partition.h>
 #include <ExceptionInfo.h>
+#include <IncrementalCache.h>
 #include "PhysicalStage.h"
 #include "LLVMOptimizer.h"
 #include <logical/ParallelizeOperator.h>
@@ -95,6 +96,24 @@ namespace tuplex {
         }
 
         /*!
+         * set cache entry of previous execution to be used by the incremental resoltuion
+         * @param cacheEntry
+         */
+        void setCacheEntry(CacheEntry *cacheEntry) { _cacheEntry = cacheEntry; }
+
+        /*!
+         * get cache entry of previous execution
+         * @return CacheEntry*
+         */
+        CacheEntry *cacheEntry() { return _cacheEntry; }
+
+        /*!
+         * whether or not to use incremental resolution during stage execution
+         * @return bool
+         */
+        bool useIncrementalResolution() { return _useIncrementalResolution; }
+
+        /*!
          * set input exceptions, i.e. rows that could come from a parallelize or csv operator.
          * @param pythonObjects
          */
@@ -157,12 +176,24 @@ namespace tuplex {
          */
         std::shared_ptr<ResultSet> resultSet() const override { return _rs;}
 
-        void setMemoryResult(const std::vector<Partition*>& partitions,
-                             const std::vector<Partition*>& generalCase=std::vector<Partition*>{},
-                             const std::unordered_map<std::string, ExceptionInfo>& parttionToExceptionsMap=std::unordered_map<std::string, ExceptionInfo>(),
-                             const std::vector<std::tuple<size_t, PyObject*>>& interpreterRows=std::vector<std::tuple<size_t, PyObject*>>{},
-                             const std::vector<Partition*>& remainingExceptions=std::vector<Partition*>{},
+        /*!
+         * set memory result from pipeline execution
+         * @param outputPartitions normal rows
+         * @param outputPythonObjects valid output as python objects and index into normal rows
+         * @param exceptionPartitions exceptions raised during execution
+         * @param exceptionMap mapping of exceptions to the output partitions
+         * @param generalCasePartitions general case violations raised during execution
+         * @param generalCaseMap mapping of general case partitions to the output partitions
+         * @param ecounts exception counts
+         */
+        void setMemoryResult(const std::vector<Partition*>& outputPartitions,
+                             const std::vector<std::tuple<size_t, PyObject*>>& outputPythonObjects=std::vector<std::tuple<size_t, PyObject*>>{},
+                             const std::vector<Partition*> &exceptionPartitions=std::vector<Partition*>{},
+                             const std::unordered_map<std::string, ExceptionInfo>& exceptionMap=std::unordered_map<std::string, ExceptionInfo>(),
+                             const std::vector<Partition*>& generalCasePartitions=std::vector<Partition*>{},
+                             const std::unordered_map<std::string, ExceptionInfo>& generalCaseMap=std::unordered_map<std::string, ExceptionInfo>(),
                              const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts=std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>()); // creates local result set?
+
         void setFileResult(const std::unordered_map<std::tuple<int64_t, ExceptionCode>, size_t>& ecounts); // creates empty result set with exceptions
 
         void setEmptyResult() {
@@ -172,10 +203,11 @@ namespace tuplex {
             else
                 setMemoryResult(
                         std::vector<Partition*>(),
-                        std::vector<Partition*>(),
-                        std::unordered_map<std::string, ExceptionInfo>(),
                         std::vector<std::tuple<size_t, PyObject*>>(),
                         std::vector<Partition*>(),
+                        std::unordered_map<std::string, ExceptionInfo>(),
+                        std::vector<Partition*>(),
+                        std::unordered_map<std::string, ExceptionInfo>(),
                         ecounts);
         }
 
@@ -376,6 +408,11 @@ namespace tuplex {
         bool updateInputExceptions() const { return _updateInputExceptions; }
 
         /*!
+         * whether to use incremental resolution to execute the stage with
+         */
+        bool useIncrementalResolution() const { return _useIncrementalResolution; }
+
+        /*!
          * @return Returns the type of the hash-grouped data. Hash-grouped data refers to when the operator is a
          *         pipeline breaker that needs the previous stage's hashmap to be converted to partitions
          *         (e.g. unique() and aggregateBy())
@@ -459,7 +496,10 @@ namespace tuplex {
         std::string _pyCode;
         std::string _pyPipelineName;
         std::string _writerFuncName;
+
         bool _updateInputExceptions;
+        bool _useIncrementalResolution;
+        CacheEntry *_cacheEntry;
 
         std::shared_ptr<ResultSet> emptyResultSet() const;
 
