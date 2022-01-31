@@ -419,6 +419,10 @@ namespace tuplex {
             stage->setInputFiles(csvop->getURIs(), csvop->getURISizes());
         } // else it must be an internal node! => need to set manually based on result
 
+        if (useIncrementalResolution) {
+            stage->setCacheEntry(cacheEntry);
+        }
+
         return stage;
     }
 

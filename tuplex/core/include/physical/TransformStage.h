@@ -96,7 +96,7 @@ namespace tuplex {
         }
 
         /*!
-         * set cache entry of previous execution to be used by the incremental resoltuion
+         * set cache entry of previous execution to be used by the incremental resolution
          * @param cacheEntry
          */
         void setCacheEntry(CacheEntry *cacheEntry) { _cacheEntry = cacheEntry; }

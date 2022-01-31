@@ -413,7 +413,7 @@ default:
             // => need a list of for which opIds/codes resolvers are available...
             ///....
             _numUnresolved++;
-            exceptionCallback(ecCode, operatorID, _rowNumber, ebuf, eSize);
+            exceptionCallback(ecCode, operatorID, _currentRowNumber, ebuf, eSize);
             return;
         }
 
@@ -676,7 +676,7 @@ default:
         // fallback 3: still exception? save...
         if(resCode == -1) {
             _numUnresolved++;
-            exceptionCallback(ecCode, operatorID, _rowNumber, ebuf, eSize);
+            exceptionCallback(ecCode, operatorID, _currentRowNumber, ebuf, eSize);
         }
     }
 
