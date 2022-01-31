@@ -632,7 +632,7 @@ TEST_F(WrapperTest, UpcastParallelizeI) {
 
     // RAII, destruct python context!
     auto opts = testOptions();
-    opts.set("tuple.autoUpcast", "true");
+    opts.set("tuplex.autoUpcast", "true");
     PythonContext c("python", "", opts.asJSON());
 
     // weird block syntax due to RAII problems.
