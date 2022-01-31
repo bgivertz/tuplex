@@ -9,7 +9,7 @@
 //--------------------------------------------------------------------------------------------------------------------//
 
 #include <gtest/gtest.h>
-#include <context.h>
+#include <Context.h>
 #include "TestUtils.h"
 
 class IncrementalTest : public PyTest {};
