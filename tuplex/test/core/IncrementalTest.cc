@@ -21,10 +21,11 @@ TEST_F(IncrementalTest, Debug) {
     auto opts = testOptions();
     opts.set("tuplex.optimizer.incrementalResolution", "true");
     opts.set("tuplex.optimizer.mergeExceptionsInOrder", "true");
+    opts.set("tuplex.executorCount", "0");
     Context c(opts);
 
-    auto numRows = 1000;
-    auto amountExps = 0.1;
+    auto numRows = 100000;
+    auto amountExps = 0.25;
     std::vector<Row> inputRows;
     inputRows.reserve(numRows);
 

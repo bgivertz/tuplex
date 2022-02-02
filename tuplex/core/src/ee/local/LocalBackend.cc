@@ -789,7 +789,54 @@ namespace tuplex {
         return pyObjects;
     }
 
-    void setExceptionInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap) {
+    void setExceptionInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap, size_t startInd) {
+        if (exceptions.empty()) {
+            for (const auto &p : normalOutput) {
+                partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo();
+            }
+            return;
+        }
+
+        auto expRowCount = 0;
+        auto expInd = 0;
+        auto expRowOff = 0;
+        auto expByteOff = 0;
+
+        auto expNumRows = exceptions[0]->getNumRows();
+        auto expPtr = exceptions[0]->lock();
+        for (const auto &p : normalOutput) {
+            auto pNumRows = p->getNumRows();
+            auto curNumExps = 0;
+            auto curExpOff = expRowOff;
+            auto curExpInd = expInd + startInd;
+            auto curExpByteOff = expByteOff;
+
+            while (*((int64_t *) expPtr) <= pNumRows + curNumExps && expRowCount < expNumRows) {
+                curNumExps++;
+                expRowOff++;
+                auto eSize = ((int64_t *)expPtr)[3] + 4*sizeof(int64_t);
+                expPtr += eSize;
+                expByteOff += eSize;
+                expRowCount++;
+
+                if (expRowOff == expNumRows && expInd < exceptions.size() - 1) {
+                    exceptions[expInd]->unlock();
+                    expInd++;
+                    expPtr = exceptions[expInd]->lock();
+                    expNumRows = exceptions[expInd]->getNumRows();
+                    expRowOff = 0;
+                    expByteOff = 0;
+                    expRowCount = 0;
+                }
+            }
+
+            partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo(curNumExps, curExpInd, curExpOff, curExpByteOff);
+        }
+
+        exceptions[expInd]->unlock();
+    }
+
+    void setGeneralCaseInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap, size_t startInd) {
         if (exceptions.empty()) {
             for (const auto &p : normalOutput) {
                 partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo();
@@ -809,7 +856,7 @@ namespace tuplex {
             auto pNumRows = p->getNumRows();
             auto curNumExps = 0;
             auto curExpOff = expRowOff;
-            auto curExpInd = expInd;
+            auto curExpInd = expInd + startInd;
             auto curExpByteOff = expByteOff;
 
             while (*((int64_t *) expPtr) - rowsProcessed <= pNumRows + curNumExps && expRowCount < expNumRows) {
@@ -940,8 +987,8 @@ namespace tuplex {
                     if(task->type() == TaskType::RESOLVE)
                         task_name = "resolve";
 
-                    setExceptionInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap);
-                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap);
+                    setGeneralCaseInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap, generalOutput.size());
+                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap, remainingExceptions.size());
                     std::copy(taskOutput.begin(), taskOutput.end(), std::back_inserter(output));
                     std::copy(taskRemainingExceptions.begin(), taskRemainingExceptions.end(), std::back_inserter(remainingExceptions));
                     std::copy(taskGeneralOutput.begin(), taskGeneralOutput.end(), std::back_inserter(generalOutput));
@@ -1352,8 +1399,8 @@ namespace tuplex {
                     if(task->type() == TaskType::RESOLVE)
                         task_name = "resolve";
 
-                    setExceptionInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap);
-                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap);
+                    setGeneralCaseInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap, generalOutput.size());
+                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap, remainingExceptions.size());
                     std::copy(taskOutput.begin(), taskOutput.end(), std::back_inserter(output));
                     std::copy(taskRemainingExceptions.begin(), taskRemainingExceptions.end(), std::back_inserter(remainingExceptions));
                     std::copy(taskGeneralOutput.begin(), taskGeneralOutput.end(), std::back_inserter(generalOutput));

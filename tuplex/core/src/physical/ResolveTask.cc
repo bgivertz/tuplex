@@ -875,7 +875,7 @@ default:
         int64_t numRuntimeRowsLeftInPartition = 0; // number of rows remaining in partition
         const uint8_t *runPtr = nullptr;
         if (_numRuntimeExceptions > 0) {
-            curRuntimePartitionInd = 0;
+            curRuntimePartitionInd = _runtimeExceptionIndex;
             numRuntimeRowsLeftInPartition = _runtimeExceptions[curRuntimePartitionInd]->getNumRows() - _runtimeExceptionRowOffset;
             runPtr = _runtimeExceptions[curRuntimePartitionInd]->lock() + _runtimeExceptionByteOffset;
         }
@@ -972,6 +972,7 @@ default:
             _rowNumber++;
 
             numRuntimeRowsLeftInPartition--;
+            runtimeRowsProcessed++;
             // Exhausted current runtime exceptions in partitions need to switch partitions or could be done
             if (numRuntimeRowsLeftInPartition == 0 || runtimeRowsProcessed == _numRuntimeExceptions) {
                 _runtimeExceptions[curRuntimePartitionInd]->unlock();
