@@ -14,16 +14,20 @@
 namespace tuplex {
     ResultSet::ResultSet(const Schema& schema,
             const std::vector<Partition*>& partitions,
-            const std::vector<Partition*>& exceptions,
-            const std::unordered_map<std::string, ExceptionInfo>& partitionToExceptionsMap,
-            const std::vector<std::tuple<size_t, PyObject*>> pyobjects,
+            const std::vector<Partition*>& generalCasePartitions,
+            const std::unordered_map<std::string, ExceptionInfo>& generalCaseMap,
+            const std::vector<std::tuple<size_t, PyObject*>>& pyobjects,
+            const std::vector<Partition*>& exceptionPartitions,
+            const std::unordered_map<std::string, ExceptionInfo>& exceptionMap,
             int64_t maxRows) : ResultSet::ResultSet() {
         for(Partition *p : partitions)
             _partitions.push_back(p);
 
         _pyobjects = std::deque<std::tuple<size_t, PyObject*>>(pyobjects.begin(), pyobjects.end());
-        _exceptions = exceptions;
-        _partitionToExceptionsMap = partitionToExceptionsMap;
+        _generalCasePartitions = generalCasePartitions;
+        _generalCaseMap = generalCaseMap;
+        _exceptionPartitions = exceptionPartitions;
+        _exceptionMap = exceptionMap;
         _curRowCounter = 0;
         _totalRowCounter = 0;
         _byteCounter = 0;
@@ -36,8 +40,12 @@ namespace tuplex {
         for(auto partition : _partitions)
             partition->invalidate();
         _partitions.clear();
-        for(auto partition : _exceptions)
+        for(auto partition : _generalCasePartitions)
             partition->invalidate();
+        _generalCasePartitions.clear();
+        for(auto partition : _exceptionPartitions)
+            partition->invalidate();
+        _exceptionPartitions.clear();
 
         _curRowCounter = 0;
         _byteCounter = 0;

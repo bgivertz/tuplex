@@ -171,6 +171,7 @@ namespace tuplex {
             // put ALL partitions to result set
             _rs = std::make_shared<ResultSet>(schema, limitedPartitions,
                                               generalCasePartitions, generalCaseMap, outputPythonObjects,
+                                              exceptionPartitions, exceptionMap,
                                               outputLimit());
         }
     }

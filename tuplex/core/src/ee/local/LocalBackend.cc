@@ -1264,14 +1264,6 @@ namespace tuplex {
             Logger::instance().defaultLogger().info(msg);
             ss.str("");
 
-            // resolution
-            // => for optimization purposes we might want to keep cases separate (cache operator)
-            //    whereas for other purposes (hashing) we need to combine cases together
-            if(tstage->persistSeparateCases()) {
-                // deactivate merging in order
-                merge_except_rows = false;
-            }
-
             // should slow path get executed
             executeSlowPath = syms->resolveFunctor || !tstage->purePythonCode().empty();
 

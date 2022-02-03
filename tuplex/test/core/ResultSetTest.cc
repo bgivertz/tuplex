@@ -86,6 +86,8 @@ TEST_F(ResultSetTest, NoPyObjects) {
                                       std::vector<Partition*>{},
                                       std::unordered_map<std::string, ExceptionInfo>(),
                                       vector<tuple<size_t, PyObject*>>{},
+                                      std::vector<Partition*>{},
+                                      std::unordered_map<std::string, ExceptionInfo>(),
                                       Nlimit);
     pos = 0;
     while(rsB->hasNextRow()) {

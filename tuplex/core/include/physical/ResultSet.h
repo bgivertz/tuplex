@@ -26,8 +26,10 @@ namespace tuplex {
     class ResultSet {
     private:
         std::list<Partition*> _partitions;
-        std::vector<Partition*> _exceptions; // unresolved exceptions
-        std::unordered_map<std::string, ExceptionInfo> _partitionToExceptionsMap;
+        std::vector<Partition*> _generalCasePartitions; // unresolved exceptions
+        std::unordered_map<std::string, ExceptionInfo> _generalCaseMap;
+        std::vector<Partition*> _exceptionPartitions;
+        std::unordered_map<std::string, ExceptionInfo> _exceptionMap;
         // @TODO: use here rows instead? would make it potentially cleaner...
         std::deque<std::tuple<size_t, PyObject*>> _pyobjects; // python objects remaining whose type
         // did not confirm to the one of partitions. Maybe use Row here instead?
@@ -53,9 +55,11 @@ namespace tuplex {
 
         ResultSet(const Schema& _schema,
                   const std::vector<Partition*>& partitions,
-                  const std::vector<Partition*>& exceptions=std::vector<Partition*>{},
-                  const std::unordered_map<std::string, ExceptionInfo>& partitionToExceptionsMap=std::unordered_map<std::string, ExceptionInfo>(),
-                  const std::vector<std::tuple<size_t, PyObject*>> pyobjects=std::vector<std::tuple<size_t, PyObject*>>{},
+                  const std::vector<Partition*>& generalCasePartitions=std::vector<Partition*>{},
+                  const std::unordered_map<std::string, ExceptionInfo>& generalCaseMap=std::unordered_map<std::string, ExceptionInfo>(),
+                  const std::vector<std::tuple<size_t, PyObject*>>& pyobjects=std::vector<std::tuple<size_t, PyObject*>>{},
+                  const std::vector<Partition*>& exceptionPartitions=std::vector<Partition*>{},
+                  const std::unordered_map<std::string, ExceptionInfo>& exceptionMap=std::unordered_map<std::string, ExceptionInfo>(),
                   int64_t maxRows=std::numeric_limits<int64_t>::max());
 
         /*!
@@ -106,9 +110,25 @@ namespace tuplex {
          * retrieve all unresolved rows (should be only called internally). DOES NOT REMOVE THEM FROM result set.
          * @return
          */
-        std::vector<Partition*> exceptions() const { return _exceptions; }
+        std::vector<Partition*> generalCasePartitions() const { return _generalCasePartitions; }
 
-        std::unordered_map<std::string, ExceptionInfo> partitionToExceptionsMap() const { return _partitionToExceptionsMap; }
+        /*!
+         * retrieve mapping of general case partitions to their output partitions
+         * @return
+         */
+        std::unordered_map<std::string, ExceptionInfo> generalCaseMap() const { return _generalCaseMap; }
+
+        /*!
+         * retrieve all remaining exception partitions
+         * @return
+         */
+        std::vector<Partition*> exceptionPartitions() const { return _exceptionPartitions; }
+
+        /*!
+         * retrieve mapping of exception case partitions to their output partitions
+         * @return
+         */
+        std::unordered_map<std::string, ExceptionInfo> exceptionMap() const { return _exceptionMap; }
 
         /*!
          * returns/removes all objects
