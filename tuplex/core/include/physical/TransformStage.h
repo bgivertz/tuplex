@@ -40,6 +40,19 @@
 
 namespace tuplex {
 
+    inline FileFormat proto_toFileFormat(messages::FileFormat fmt) {
+        switch(fmt) {
+            case messages::FileFormat::FF_CSV:
+                return FileFormat::OUTFMT_CSV;
+            case messages::FileFormat::FF_TEXT:
+                return FileFormat::OUTFMT_TEXT;
+            case messages::FileFormat::FF_TUPLEX:
+                return FileFormat::OUTFMT_TUPLEX;
+            default:
+                return FileFormat::OUTFMT_UNKNOWN;
+        }
+    }
+
 
     // forward declaration of friend class
     namespace codegen {
@@ -305,7 +318,7 @@ namespace tuplex {
             InitData() : numArgs(0), hash_maps(nullptr), null_buckets(nullptr), hybrids(nullptr) {}
         };
 
-        InitData initData() const { return _initData; }
+        const InitData initData() const { return _initData; }
         void setInitData(int64_t numArgs=0, uint8_t** hash_maps=nullptr, uint8_t** null_buckets=nullptr, PyObject** hybrids=nullptr) {
             _initData.numArgs = numArgs;
             _initData.hash_maps = hash_maps;

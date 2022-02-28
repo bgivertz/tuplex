@@ -49,7 +49,8 @@ namespace tuplex {
                                    bool allowUndefinedBehavior) : PhysicalStage::PhysicalStage(plan, backend, number),
                                                                   _inputLimit(std::numeric_limits<size_t>::max()),
                                                                   _outputLimit(std::numeric_limits<size_t>::max()),
-                                                                  _aggMode(AggregateType::AGG_NONE) {
+                                                                  _aggMode(AggregateType::AGG_NONE),
+                                                                  _updateInputExceptions(false) {
 
         // TODO: is this code out of date? + is allowUndefinedBehavior needed here?
         // plan stage using operators.
@@ -775,7 +776,7 @@ namespace tuplex {
         if(registerSymbols && !writeFileCallbackName().empty())
             jit.registerSymbol(writeFileCallbackName(), TransformTask::writeRowCallback(hasOutputLimit(), true));
 
-        if(outputMode() == EndPointMode::HASHTABLE && !_funcHashWriteCallbackName.empty()) {
+        if(registerSymbols && outputMode() == EndPointMode::HASHTABLE && !_funcHashWriteCallbackName.empty()) {
             if (hashtableKeyByteWidth() == 8) {
                 if(_aggregateAggregateFuncName.empty())
                     jit.registerSymbol(_funcHashWriteCallbackName, TransformTask::writeInt64HashTableCallback());
@@ -797,7 +798,7 @@ namespace tuplex {
         if(registerSymbols && !resolveExceptionCallbackName().empty())
             jit.registerSymbol(resolveExceptionCallbackName(), ResolveTask::exceptionCallback());
 
-        if(outputMode() == EndPointMode::HASHTABLE && !resolveExceptionCallbackName().empty()) {
+        if(registerSymbols && outputMode() == EndPointMode::HASHTABLE && !resolveExceptionCallbackName().empty()) {
             if(hashtableKeyByteWidth() == 8) {
                 if(_aggregateAggregateFuncName.empty())
                     jit.registerSymbol(resolveHashCallbackName(), ResolveTask::writeInt64HashTableCallback());
@@ -892,19 +893,6 @@ namespace tuplex {
         }
     }
 
-    static FileFormat proto_toFileFormat(messages::FileFormat fmt) {
-        switch(fmt) {
-            case messages::FileFormat::FF_CSV:
-                return FileFormat::OUTFMT_CSV;
-            case messages::FileFormat::FF_TEXT:
-                return FileFormat::OUTFMT_TEXT;
-            case messages::FileFormat::FF_TUPLEX:
-                return FileFormat::OUTFMT_TUPLEX;
-            default:
-                return FileFormat::OUTFMT_UNKNOWN;
-        }
-    }
-
     TransformStage* TransformStage::from_protobuf(const messages::TransformStage &msg) {
         auto stage = new TransformStage(nullptr, nullptr, msg.stagenumber(), true); // dummy, no backend/plan
 
@@ -937,8 +925,10 @@ namespace tuplex {
 
         stage->_irBitCode = msg.bitcode();
         stage->_pyCode = msg.pycode();
+        stage->_pyPipelineName = msg.pypipelinename();
 
         stage->_persistSeparateCases = msg.persistseparatecases();
+        stage->_updateInputExceptions = msg.updateinputexceptions();
 
         stage->_funcStageName = msg.funcstagename();
         stage->_funcMemoryWriteCallbackName = msg.funcmemorywritecallbackname();
@@ -969,6 +959,7 @@ namespace tuplex {
 
         msg->set_bitcode(_irBitCode);
         msg->set_pycode(_pyCode);
+        msg->set_pypipelinename(_pyPipelineName);
 
         for(const auto& col : _inputColumns)
             msg->add_inputcolumns(col);
@@ -996,6 +987,7 @@ namespace tuplex {
         msg->set_outputformat(fileFormat_toproto(_outputFormat));
 
         msg->set_persistseparatecases(_persistSeparateCases);
+        msg->set_updateinputexceptions(_updateInputExceptions);
         msg->set_funcstagename(_funcStageName);
         msg->set_funcmemorywritecallbackname(_funcMemoryWriteCallbackName);
         msg->set_funcfilewritecallbackname(_funcFileWriteCallbackName);
@@ -1004,6 +996,7 @@ namespace tuplex {
         msg->set_funcinitstagename(_initStageFuncName);
         msg->set_funcreleasestagename(_releaseStageFuncName);
         msg->set_resolverowfunctionname(_resolveRowFunctionName);
+        msg->set_resolverowwritecallbackname(_resolveRowWriteCallbackName);
         msg->set_resolverowexceptioncallbackname(_resolveRowExceptionCallbackName);
         msg->set_resolvehashcallbackname(_resolveHashCallbackName);
         msg->set_stagenumber(number());

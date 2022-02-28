@@ -18,6 +18,18 @@ option(BUILD_WITH_AWS "Build Tuplex with AWS support. This will include access t
 option(GENERATE_PDFS "whether to generate PDFs in Debug mode or not. Disable for faster testing speeds." OFF)
 option(SHOW_EXPLICIT_WARNINGS "Show the output of #warning directives in the code (lots of output)" OFF)
 option(USE_LD_GOLD "Use GNU gold linker" ON)
+option (FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." ON)
+# variables:
+# AWS_S3_TEST_BUCKET ==> specifies bucket to run tests on!
+
+# add flags to compiler to enable colored output.
+if (${FORCE_COLORED_OUTPUT})
+    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+        add_compile_options (-fdiagnostics-color=always)
+    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options (-fcolor-diagnostics)
+    endif ()
+endif ()
 
 # via -DVERSION_INFO a string may be passed down. --> include it somehow
 if(VERSION_INFO)
@@ -28,6 +40,8 @@ else()
     project(Tuplex DESCRIPTION "Tuplex processing framework")
 endif()
 
+# name of worker executable
+set(WORKER_NAME tuplex-worker)
 
 # before writing additional cmake modules to put in cmake/, check the list of supported cmake standard modules
 # available here: https://cmake.org/cmake/help/latest/manual/cmake-modules.7.html#find-modules
@@ -83,6 +97,16 @@ endif()
 
 if(BUILD_WITH_ORC)
     add_definitions(-DBUILD_WITH_ORC)
+endif()
+
+if(NOT AWS_S3_TEST_BUCKET AND ENV{AWS_S3_TEST_BUCKET})
+    set(AWS_S3_TEST_BUCKET $ENV{AWS_S3_TEST_BUCKET})
+endif()
+if(NOT SKIP_AWS_TESTS AND NOT AWS_S3_TEST_BUCKET)
+    message(FATAL_ERROR "To run AWS tests, please specify a test-bucket. I.e., by setting an environment variable export AWS_S3_TEST_BUCKET=<bucket> or passing an option to cmake via -DAWS_S3_TEST_BUCKET=<bucket>")
+endif()
+if(AWS_S3_TEST_BUCKET)
+    add_compile_definitions("S3_TEST_BUCKET=\"${AWS_S3_TEST_BUCKET}\"")
 endif()
 
 # add -Werror=return-type  to turn missing returns into errors!!!
@@ -559,6 +583,7 @@ add_subdirectory(io)
 add_subdirectory(python)
 add_subdirectory(runtime)
 add_subdirectory(adapters)
+add_subdirectory(worker)
 
 # following code is from https://github.com/OPM/opm-common/blob/master/cmake/Modules/UseSystemInfo.cmake
 # read property from the newer /etc/os-release
@@ -618,6 +643,14 @@ if(USE_LD_GOLD AND "${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
     else()
         message(WARNING "GNU gold linker isn't available, using the default system linker.")
     endif()
+endif()
+
+# on MacOS, disable the warning message ranlib: no symbols found
+if(APPLE)
+    SET(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+    SET(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+    SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
 endif()
 
 # print flags

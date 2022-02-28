@@ -11,7 +11,7 @@
 #ifndef TUPLEX_PHYSICALSTAGE_H
 #define TUPLEX_PHYSICALSTAGE_H
 
-#include <Context.h>
+#include "Context.h"
 #include <JITCompiler.h>
 #include <ee/IBackend.h>
 #include "ResultSet.h"
@@ -115,7 +115,7 @@ namespace tuplex {
          * returns PhysicalPlan associated with this stage
          * @return
          */
-        const PhysicalPlan* plan() const { assert(_plan); return _plan; }
+        const PhysicalPlan* plan() const { return _plan; }
 
         /*!
          * returns the context to which this stage belongs

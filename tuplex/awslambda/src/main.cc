@@ -13,14 +13,17 @@
 #include <nlohmann/json.hpp>
 #include <google/protobuf/util/json_util.h>
 
-
 using namespace nlohmann;
 using namespace aws::lambda_runtime;
 
 static bool g_reused = false;
 static tuplex::uniqueid_t g_id = tuplex::getUniqueID();
+uint64_t g_start_timestamp = 0;
+uint32_t g_num_requests_served = 0;
+
 bool container_reused() { return g_reused; }
 extern tuplex::uniqueid_t container_id() { return g_id; }
+
 
 
 std::string proto_to_json(const tuplex::messages::InvocationResponse& r) {
@@ -63,22 +66,52 @@ static invocation_response lambda_handler(invocation_request const& req) {
     }
 }
 
+// expose app as global object throughout code-base
+static std::shared_ptr<tuplex::LambdaWorkerApp> the_app;
+void init_app() {
+    using namespace tuplex;
+    LambdaWorkerSettings ws;
+    the_app = std::make_shared<tuplex::LambdaWorkerApp>(ws);
+}
+
+extern std::shared_ptr<tuplex::LambdaWorkerApp> get_app() {
+    return the_app;
+}
+
 // main function which setups error handling & invocation of custom lambda function
 int main() {
 
     // TODO: determine whether this is needed for the new AWS C++ Runtime
     using namespace aws::lambda_runtime;
+    using namespace tuplex;
+
+    // record start timestamp
+    g_start_timestamp = current_utc_timestamp();
+
+    // init logger to only act with stdout sink (no file logging!)
+    Logger::init({std::make_shared<spdlog::sinks::ansicolor_stdout_sink_mt>()});
+
     // install sigsev handler to throw C++ exception which is caught in handler...
     struct sigaction sigact;
     sigact.sa_sigaction = sigsev_handler;
     sigact.sa_flags = SA_RESTART | SA_SIGINFO;
 
-
     // set sigabort too
     sigaction(SIGABRT, &sigact, nullptr);
 
-    global_init();
-    reset_executor_setup();
+    // initialize LambdaWorkerApp
+    init_app();
+    if(!get_app()) {
+        run_handler([](invocation_request const& req) {
+            return invocation_response::success(proto_to_json(make_exception("failed to initiailize worker application")),
+                                                "application/json");
+        });
+        return 0;
+    }
+
+    //    // old:
+    //    global_init();
+    //    reset_executor_setup();
 
     // signal(SIGSEGV, sigsev_handler);
     if(sigaction(SIGSEGV, &sigact, nullptr) != 0) {
@@ -114,7 +147,9 @@ int main() {
     std::cout.flush();
     std::cerr.flush();
 
-    global_cleanup();
+    // run cleanup from app? => doesn't matter. just let it get killed...
+    get_app()->shutdown();
+    // global_cleanup();
 
     return 0;
 }

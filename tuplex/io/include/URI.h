@@ -44,6 +44,16 @@ namespace tuplex {
 
         template<std::size_t N> URI(const char(&path)[N]) : URI(std::string(path)) {}
 
+        inline URI join(const std::string& file_name) {
+            // ends with '/'?
+            if(_uri.empty())
+                return URI(file_name);
+            if(_uri.back() == '/')
+                return URI(_uri + file_name);
+            else
+                return URI(_uri + "/" + file_name);
+        }
+
         /*!
          * checks whether URI locates a file or not. True if file doesn't exist.
          * @return
@@ -168,6 +178,29 @@ namespace tuplex {
     };
 
 
+    /*!
+     *
+     * @param uri string containing uri w. range description
+     * @param target to which URI to decode
+     * @param rangeStart byte offset
+     * @param rangeEnd byte offset
+     * @return true if decode was successful, else false
+     */
+    extern bool decodeRangeURI(const std::string& uri, URI& target, size_t& rangeStart, size_t& rangeEnd);
+
+    /*!
+     * encode range into URI
+     * @param uri
+     * @param rangeStart
+     * @param rangeEnd
+     * @return string representing uri + ranges
+     */
+    extern std::string encodeRangeURI(const URI& uri, size_t rangeStart, size_t rangeEnd);
+
+    inline std::ostream& operator << (std::ostream& os, const URI& uri) {
+        os<<uri.toString();
+        return os;
+    }
 
 }
 

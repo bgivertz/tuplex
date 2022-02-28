@@ -241,7 +241,11 @@ namespace tuplex {
                      {"tuplex.aws.region", "us-east-1"},
                      {"tuplex.aws.lambdaMemory", "1536"},
                      {"tuplex.aws.lambdaTimeout", "600"},
+                     {"tuplex.aws.lambdaThreads", "auto"},
+                     {"tuplex.aws.lambdaInvokeOthers", "true"},
+                     {"tuplex.aws.lambdaInvocationStrategy", "direct"},
                      {"tuplex.aws.requesterPay", "false"},
+                     {"tuplex.useInterpreterOnly", "false"},
                      {"tuplex.resolveWithInterpreterOnly", "false"},
                      {"tuplex.network.caFile", ""},
                      {"tuplex.network.caPath", ""},
@@ -295,7 +299,11 @@ namespace tuplex {
                      {"tuplex.aws.region", "us-east-1"},
                      {"tuplex.aws.lambdaMemory", "1536"},
                      {"tuplex.aws.lambdaTimeout", "600"},
+                     {"tuplex.aws.lambdaThreads", "auto"},
+                     {"tuplex.aws.lambdaInvokeOthers", "true"},
+                     {"tuplex.aws.lambdaInvocationStrategy", "direct"},
                      {"tuplex.aws.requesterPay", "false"},
+                     {"tuplex.useInterpreterOnly", "false"},
                      {"tuplex.resolveWithInterpreterOnly", "true"},
                      {"tuplex.network.caFile", ""},
                      {"tuplex.network.caPath", ""},
@@ -577,7 +585,7 @@ namespace tuplex {
         // check first with pathParent, then PATH
         std::vector<std::string> failedPaths;
         for(auto c : candidates) {
-            URI p = URI(pathParent + "/" + c);
+            URI p = URI(pathParent.empty() ? c : pathParent + "/" + c);
             if(p.exists() && p.isFile())
                 return p;
             else

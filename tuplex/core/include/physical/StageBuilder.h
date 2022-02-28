@@ -81,6 +81,7 @@ namespace tuplex {
             }
 
             TransformStage* build(PhysicalPlan* plan, IBackend* backend);
+            inline TransformStage* build() { return build(nullptr, nullptr); }
         private:
 
             // flags to influence code generation

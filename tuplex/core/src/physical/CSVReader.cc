@@ -304,9 +304,12 @@ namespace tuplex {
             // if ranges, fill!
             if(_rangeStart < _rangeEnd) {
 
+#ifndef NDEBUG
                 // sanity check
-                assert(_rangeEnd - _rangeStart >= 256); // range should be at least 256bytes for a row!
-
+                // range should be at least 256bytes for a row!
+                if(_rangeEnd - _rangeStart < 256)
+                    Logger::instance().defaultLogger().debug("extremely small range of " + std::to_string(_rangeEnd - _rangeStart) + " requested, merge with other part?");
+#endif
                 getChunkStart();
 
                 _curFilePos = _rangeStart;
@@ -412,6 +415,9 @@ namespace tuplex {
 
         // create cursor
         VFCSVStreamCursor cursor(inputFilePath, _delimiter, _quotechar, _numColumns, _rangeStart, _rangeEnd);
+
+        // debug: find actual start range
+        auto actual_byte_start = cursor.curFilePos();
 
         // read using csvmonkey
         csvmonkey::CsvReader<> reader(cursor, _delimiter, _quotechar);
@@ -631,5 +637,17 @@ namespace tuplex {
         delete [] cells;
         delete [] cell_sizes;
         runtime::rtfree_all();
+
+        auto actual_byte_end = cursor.curFilePos();
+
+#ifndef NDEBUG
+        {
+            std::stringstream ss;
+            ss<<"Read CSV from "<<inputFilePath.toString()<<":"
+            <<actual_byte_start<<"-"<<actual_byte_end<<" ("
+            <<_rangeStart<<"-"<<_rangeEnd<<") "<<pluralize(rowNumber, "row");
+            Logger::instance().defaultLogger().debug(ss.str());
+        }
+#endif
     }
 }

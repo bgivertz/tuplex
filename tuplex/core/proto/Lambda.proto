@@ -15,6 +15,12 @@ enum EndPointMode {
     EPM_HASHTABLE = 3;
 }
 
+enum MessageType {
+    MT_UNKNOWN = 0;
+    MT_WARMUP = 1;
+    MT_TRANSFORM = 2;
+}
+
 message TransformStage {
     bytes bitcode = 1;
     repeated string inputColumns = 2;
@@ -34,31 +40,102 @@ message TransformStage {
     FileFormat inputFormat = 15;
     FileFormat outputFormat = 16;
     bool persistSeparateCases = 17;
-    string funcStageName = 18;
-    string funcMemoryWriteCallbackName = 19;
-    string funcFileWriteCallbackName = 20;
-    string funcHashWriteCallbackName = 21;
-    string funcExceptionCallback = 22;
-    string funcInitStageName = 23;
-    string funcReleaseStageName = 24;
-    string resolveRowFunctionName = 25;
-    string resolveRowWriteCallbackName = 26;
-    string resolveRowExceptionCallbackName = 27;
-    string resolveHashCallbackName = 28;
-    uint32 stageNumber = 29;
-    uint32 numColumns = 30;
-    string pycode = 31;
+    bool updateInputExceptions = 18;
+    string funcStageName = 19;
+    string funcMemoryWriteCallbackName = 20;
+    string funcFileWriteCallbackName = 21;
+    string funcHashWriteCallbackName = 22;
+    string funcExceptionCallback = 23;
+    string funcInitStageName = 24;
+    string funcReleaseStageName = 25;
+    string resolveRowFunctionName = 26;
+    string resolveRowWriteCallbackName = 27;
+    string resolveRowExceptionCallbackName = 28;
+    string resolveHashCallbackName = 29;
+    uint32 stageNumber = 30;
+    uint32 numColumns = 31;
+    string pyCode = 32;
+    string pyPipelineName = 33;
 
     // file input + output params as dict
-    map<string, string> inputParameters = 32;
-    map<string, string> outputParameters = 33;
+    map<string, string> inputParameters = 34;
+    map<string, string> outputParameters = 35;
+
+    // how many lambdas should each Lambda invoke? Recursive, i.e. {1, 1, 1} means the first Lambda invokes another
+    // lambda, that again another etc. The total wait time thereby is baseDelay * depth
+    repeated uint32 invocationCount = 36;
+}
+
+message WorkerSettings {
+    optional uint32 numThreads = 1;
+    optional uint32 normalBufferSize = 2;
+    optional uint32 exceptionBufferSize = 3;
+    optional uint32 hashBufferSize = 4;
+    optional string spillRootURI = 5;
+    optional uint32 runTimeMemoryPerThread = 6;
+    optional uint32 runTimeMemoryPerThreadBlockSize = 7;
+    optional bool allowNumericTypeUnification = 8;
+    optional bool useInterpreterOnly = 9;
+}
+
+message WarmupMessage {
+    // how many lambdas should each Lambda invoke? Recursive, i.e. {1, 1, 1} means the first Lambda invokes another
+    // lambda, that again another etc. The total wait time thereby is baseDelay * depth
+    repeated uint32 invocationCount = 1;
+    uint32 baseDelayInMs = 2;
+    uint32 timeOutInMs = 3;
+}
+
+// a simple message for a resource that may be send along an invocation request
+message Resource {
+    string id = 1;
+    uint32 type = 2;
+    bytes payload = 3;
 }
 
 message InvocationRequest {
     repeated string inputURIS = 1;
     repeated uint64 inputSizes = 2;
-    string outputURI = 3;
-    TransformStage stage = 4;
+    string baseOutputURI = 3; // final output uri or base URI to form parts
+    optional uint32 partNoOffset = 4; // this is where to start the parts. important when recursive invocations are used
+
+    MessageType type = 5;
+    WorkerSettings settings = 6;
+
+    // optional resources attached with this message
+    repeated Resource resources = 7;
+
+    optional TransformStage stage = 8;
+    optional WarmupMessage warmup = 9;
+}
+
+
+// info about a running container, cf. ContainerInfo struct
+message ContainerInfo {
+    bool reused = 1;
+    string requestId = 2;
+    string uuid = 3;
+    uint32 msRemaining = 4;
+    uint32 requestsServed = 5;
+    uint64 start = 6;
+    uint64 deadline = 7;
+}
+
+// info about a single request , cf. Request Info struct
+message RequestInfo {
+    string requestId = 1;
+    string containerId = 2;
+    double durationInMs = 3;
+    uint32 billedDurationInMs = 4;
+    uint32 memorySizeInMb = 5;
+    uint32 maxMemoryUsedInMb = 6;
+
+    uint64 tsRequestStart = 7; // UTC timestamp when request was invoked
+    uint64 tsRequestEnd = 8; // UTC timestamp when request returned
+
+    // in case of failure, these fields here are filled.
+    uint32 returnCode = 9;
+    string errorMessage = 10;
 }
 
 message InvocationResponse {
@@ -68,19 +145,25 @@ message InvocationResponse {
     }
     Status status = 1;
     string errorMessage = 2;
+    MessageType type = 3;
 
-    repeated string inputURIS = 3;
-    repeated string outputURIs = 4;
+    repeated string inputURIS = 4;
+    repeated string outputURIs = 5;
 
-    uint64 numRowsWritten = 5;
-    uint64 numExceptions = 6;
-    uint64 numBytesWritten = 7;
+    uint64 numRowsWritten = 6;
+    uint64 numExceptions = 7;
+    uint64 numBytesWritten = 8;
 
-    bool containerReused = 8;
-    double awsInitTime = 9;
-    string containerID = 10;
-    double taskExecutionTime = 11;
-    double remainingLambdaTime = 12;
-    map<string, uint64> s3Stats = 13;
-    map<string, double> breakdownTimes = 14;
+    ContainerInfo container = 9;
+    repeated ContainerInfo invokedContainers = 10;
+    repeated RequestInfo invokedRequests = 11;
+
+    // messages may contain already result data, given in form of a resource
+    repeated Resource resources = 12;
+
+    // stats
+    double awsInitTime = 13;
+    double taskExecutionTime = 14;
+    map<string, uint64> s3Stats = 15;
+    map<string, double> breakdownTimes = 16;
 }

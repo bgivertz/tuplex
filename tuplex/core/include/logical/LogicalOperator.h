@@ -55,12 +55,16 @@ namespace tuplex {
         virtual void copyMembers(const LogicalOperator* other);
     public:
         explicit LogicalOperator(const std::vector<LogicalOperator*>& parents) : _id(logicalOperatorIDGenerator++), _parents(parents), _dataSet(nullptr) { addThisToParents(); }
-        explicit LogicalOperator(LogicalOperator* parent) : _id(logicalOperatorIDGenerator++), _parents({parent}), _dataSet(nullptr) { if(!parent) throw std::runtime_error("can't have nullptr as parent"); addThisToParents(); }
+        explicit LogicalOperator(LogicalOperator* parent) : _id(logicalOperatorIDGenerator++), _parents({parent}), _dataSet(nullptr) {
+            if(!parent)
+                throw std::runtime_error(name() + " can't have nullptr as parent");
+            addThisToParents();
+        }
         LogicalOperator() : _id(logicalOperatorIDGenerator++), _dataSet(nullptr) { addThisToParents(); }
 
         virtual ~LogicalOperator();
 
-        virtual std::string name() = 0;
+        virtual std::string name() { return "logical operator"; }
         virtual LogicalOperatorType type() const = 0;
 
         bool isLeaf() { return 0 == _children.size(); }
@@ -125,6 +129,13 @@ namespace tuplex {
         virtual std::vector<Row> getSample(const size_t num=1) const = 0;
 
         virtual void setDataSet(DataSet *ds) { _dataSet = ds;}
+
+        /*!
+         * get ID of attached dataset. If no dataset is found, return default value
+         * @param default_id_value default ID value to return
+         * @return dataSetID or defaultID
+         */
+        int64_t getDataSetID(int64_t default_id_value=-1);
 
         /*!
          * returns whether the given operator is a "final" operator in the way it is

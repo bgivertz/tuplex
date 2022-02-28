@@ -1273,7 +1273,7 @@ namespace tuplex {
         auto& logger = Logger::instance().logger("python");
 
         // go through keyval pairs and check whether they exist in default
-        for(auto keyval : m) {
+        for(const auto& keyval : m) {
             auto key = keyval.first;
             auto val = keyval.second;
 
@@ -1446,6 +1446,12 @@ namespace tuplex {
         PyDict_SetItem(dictObject,
                        python::PyString_FromString("tuplex.redirectToPythonLogging"),
                        python::boolToPython(co.REDIRECT_TO_PYTHON_LOGGING()));
+        PyDict_SetItem(dictObject,
+                       python::PyString_FromString("tuplex.useInterpreterOnly"),
+                       python::boolToPython(co.PURE_PYTHON_MODE()));
+        PyDict_SetItem(dictObject,
+                       python::PyString_FromString("tuplex.aws.lambdaInvokeOthers"),
+                       python::boolToPython(co.AWS_LAMBDA_SELF_INVOCATION()));
 
         // @TODO: move to optimizer
         PyDict_SetItem(dictObject,
