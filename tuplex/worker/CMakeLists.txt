@@ -29,7 +29,7 @@ set_target_properties(${WORKER_NAME} PROPERTIES ENABLE_EXPORTS 1)
 
 find_package(pybind11 REQUIRED)
 target_link_libraries(${WORKER_NAME} PRIVATE ${AWSSDK_LINK_LIBRARIES}
-        libio libutils libcore libcodegen libcpythonadapter ${Boost_LIBRARIES} ${LibMagic_LIBRARIES} pybind11::embed)
+        libio libutils libcore libcodegen libcpythonadapter ${Boost_LIBRARIES} ${LibMagic_LIBRARIES}  ${Python3_LIBRARIES})
 target_compile_features(${WORKER_NAME} PRIVATE "cxx_std_11")
 
 # @TODO: in order to reduce size of Lambda, strip JITCompiler away from 0codegen.
