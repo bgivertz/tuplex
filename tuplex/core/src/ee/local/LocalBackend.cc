@@ -147,9 +147,12 @@ namespace tuplex {
 
         // check what type of stage it is
         auto tstage = dynamic_cast<TransformStage*>(stage);
-        if(tstage)
-            executeTransformStage(tstage);
-        else if(dynamic_cast<HashJoinStage*>(stage)) {
+        if(tstage) {
+            if (tstage->useIncrementalResolution())
+                executeIncrementalStage(tstage);
+            else
+                executeTransformStage(tstage);
+        } else if(dynamic_cast<HashJoinStage*>(stage)) {
             executeHashJoinStage(dynamic_cast<HashJoinStage*>(stage));
         } else if(dynamic_cast<AggregateStage*>(stage)) {
             executeAggregateStage(dynamic_cast<AggregateStage*>(stage));
@@ -786,7 +789,54 @@ namespace tuplex {
         return pyObjects;
     }
 
-    void setExceptionInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap) {
+    void setExceptionInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap, size_t startInd) {
+        if (exceptions.empty()) {
+            for (const auto &p : normalOutput) {
+                partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo();
+            }
+            return;
+        }
+
+        auto expRowCount = 0;
+        auto expInd = 0;
+        auto expRowOff = 0;
+        auto expByteOff = 0;
+
+        auto expNumRows = exceptions[0]->getNumRows();
+        auto expPtr = exceptions[0]->lock();
+        for (const auto &p : normalOutput) {
+            auto pNumRows = p->getNumRows();
+            auto curNumExps = 0;
+            auto curExpOff = expRowOff;
+            auto curExpInd = expInd + startInd;
+            auto curExpByteOff = expByteOff;
+
+            while (*((int64_t *) expPtr) <= pNumRows + curNumExps && expRowCount < expNumRows) {
+                curNumExps++;
+                expRowOff++;
+                auto eSize = ((int64_t *)expPtr)[3] + 4*sizeof(int64_t);
+                expPtr += eSize;
+                expByteOff += eSize;
+                expRowCount++;
+
+                if (expRowOff == expNumRows && expInd < exceptions.size() - 1) {
+                    exceptions[expInd]->unlock();
+                    expInd++;
+                    expPtr = exceptions[expInd]->lock();
+                    expNumRows = exceptions[expInd]->getNumRows();
+                    expRowOff = 0;
+                    expByteOff = 0;
+                    expRowCount = 0;
+                }
+            }
+
+            partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo(curNumExps, curExpInd, curExpOff, curExpByteOff);
+        }
+
+        exceptions[expInd]->unlock();
+    }
+
+    void setGeneralCaseInfo(const std::vector<Partition*> &normalOutput, const std::vector<Partition*> &exceptions, std::unordered_map<std::string, ExceptionInfo> &partitionToExceptionsMap, size_t startInd) {
         if (exceptions.empty()) {
             for (const auto &p : normalOutput) {
                 partitionToExceptionsMap[uuidToString(p->uuid())] = ExceptionInfo();
@@ -806,7 +856,7 @@ namespace tuplex {
             auto pNumRows = p->getNumRows();
             auto curNumExps = 0;
             auto curExpOff = expRowOff;
-            auto curExpInd = expInd;
+            auto curExpInd = expInd + startInd;
             auto curExpByteOff = expByteOff;
 
             while (*((int64_t *) expPtr) - rowsProcessed <= pNumRows + curNumExps && expRowCount < expNumRows) {
@@ -836,8 +886,200 @@ namespace tuplex {
         exceptions[expInd]->unlockWrite();
     }
 
-    void LocalBackend::executeTransformStage(tuplex::TransformStage *tstage) {
+    void LocalBackend::executeIncrementalStage(tuplex::TransformStage *tstage) {
+        using namespace std;
 
+        Timer stageTimer;
+        Timer timer;
+
+        Partition::resetStatistics();
+
+        assert(tstage);
+        auto cacheEntry = tstage->cacheEntry();
+        assert(cacheEntry);
+        auto cachedOutputPartitions = cacheEntry->outputPartitions();
+        auto cachedOutputPythonObjects = cacheEntry->outputPythonObjects();
+        auto cachedExceptionPartitions = cacheEntry->exceptionPartitions();
+        auto cachedExceptionsMap = cacheEntry->exceptionsMap();
+        auto cachedGeneralCasePartitions = cacheEntry->generalCasePartitions();
+        auto cachedGeneralCaseMap = cacheEntry->generalCaseMap();
+
+        // If pipeline does not contain code, or no new exceptions to resolve skip stage and store new cache entry
+        auto emptyMemoryPipeline = tstage->code().empty() && !tstage->fileInputMode() && !tstage->fileOutputMode();
+        auto noNewExceptions = cachedExceptionPartitions.empty() && cachedGeneralCasePartitions.empty();
+        auto skipStage = emptyMemoryPipeline || noNewExceptions;
+        if (skipStage) {
+            tstage->setMemoryResult(cachedOutputPartitions,
+                                    cachedOutputPythonObjects,
+                                    cachedExceptionPartitions,
+                                    cachedExceptionsMap,
+                                    cachedGeneralCasePartitions,
+                                    cachedGeneralCaseMap);
+            Logger::instance().defaultLogger().info("[Transform Stage] skipped stage " + std::to_string(tstage->number()) + " because there is nothing todo here.");
+            return;
+        }
+
+        // Compile the pipeline
+        LLVMOptimizer optimizer;
+        auto syms = tstage->compile(*_compiler, _options.USE_LLVM_OPTIMIZER() ? &optimizer : nullptr, false);
+        bool combineOutputHashmaps = syms->aggInitFunctor && syms->aggCombineFunctor && syms->aggAggregateFunctor;
+        JobMetrics& metrics = tstage->PhysicalStage::plan()->getContext().metrics();
+        double total_compilation_time = metrics.getTotalCompilationTime() + timer.time();
+        metrics.setTotalCompilationTime(total_compilation_time);
+        {
+            std::stringstream ss;
+            ss<<"[Transform Stage] Stage "<<tstage->number()<<" compiled to x86 in "<<timer.time()<<"s";
+            Logger::instance().defaultLogger().info(ss.str());
+        }
+
+        // Process tasks
+        timer.reset();
+        // Hash and aggregate inits
+        int64_t init_rc = 0;
+        if((init_rc = syms->initStageFunctor(tstage->initData().numArgs,
+                                             reinterpret_cast<void**>(tstage->initData().hash_maps),
+                                             reinterpret_cast<void**>(tstage->initData().null_buckets))) != 0)
+            throw std::runtime_error("initStage() failed for stage " + std::to_string(tstage->number()) + " with code " + std::to_string(init_rc));
+
+        auto tasks = createIncrementalLoadAndTransformTasks(tstage, _options, syms);
+        auto completedTasks = performTasks(tasks);
+        timer.reset();
+
+        // sorting only make sense when order is needed
+        if (_options.OPT_MERGE_EXCEPTIONS_INORDER())
+            sortTasks(completedTasks);
+
+        // set result according to endpoint mode
+        switch(tstage->outputMode()) {
+            case EndPointMode::MEMORY: {
+                // memory output, fetch partitions & ecounts
+                vector<Partition *> output;
+                vector<Partition *> generalOutput;
+                unordered_map<string, ExceptionInfo> partitionToExceptionsMap;
+                vector<Partition*> remainingExceptions;
+                unordered_map<string, ExceptionInfo> exceptionsMap;
+                vector<tuple<size_t, PyObject*>> nonConformingRows; // rows where the output type does not fit,
+                // need to manually merged.
+                unordered_map<tuple<int64_t, ExceptionCode>, size_t> ecounts;
+                size_t rowDelta = 0;
+                for (const auto& task : completedTasks) {
+                    auto taskOutput = getOutputPartitions(task);
+                    auto taskRemainingExceptions = getRemainingExceptions(task);
+                    auto taskGeneralOutput = generalCasePartitions(task);
+                    auto taskNonConformingRows = getNonConformingRows(task);
+                    auto taskExceptionCounts = getExceptionCounts(task);
+
+                    // update exception counts
+                    ecounts = merge_ecounts(ecounts, taskExceptionCounts);
+
+                    // update nonConforming with delta
+                    for(int i = 0; i < taskNonConformingRows.size(); ++i) {
+                        auto t = taskNonConformingRows[i];
+                        t = std::make_tuple(std::get<0>(t) + rowDelta, std::get<1>(t));
+                        taskNonConformingRows[i] = t;
+                    }
+
+                    // debug trace issues
+                    using namespace std;
+                    std::string task_name = "unknown";
+                    if(task->type() == TaskType::UDFTRAFOTASK)
+                        task_name = "udf trafo task";
+                    if(task->type() == TaskType::RESOLVE)
+                        task_name = "resolve";
+
+                    setGeneralCaseInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap, generalOutput.size());
+                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap, remainingExceptions.size());
+                    std::copy(taskOutput.begin(), taskOutput.end(), std::back_inserter(output));
+                    std::copy(taskRemainingExceptions.begin(), taskRemainingExceptions.end(), std::back_inserter(remainingExceptions));
+                    std::copy(taskGeneralOutput.begin(), taskGeneralOutput.end(), std::back_inserter(generalOutput));
+                    std::copy(taskNonConformingRows.begin(), taskNonConformingRows.end(), std::back_inserter(nonConformingRows));
+
+                    // compute the delta used to offset records!
+                    for (const auto &p : taskOutput)
+                        rowDelta += p->getNumRows();
+                    for (const auto &p : taskGeneralOutput)
+                        rowDelta += p->getNumRows();
+                    rowDelta += taskNonConformingRows.size();
+                }
+
+                tstage->setMemoryResult(output, nonConformingRows, remainingExceptions, exceptionsMap, generalOutput, partitionToExceptionsMap, ecounts);
+                break;
+            }
+            default:
+                throw std::runtime_error("unknown endpoint in execute");
+        }
+
+        // call release func for stage globals
+        if(syms->releaseStageFunctor() != 0)
+            throw std::runtime_error("releaseStage() failed for stage " + std::to_string(tstage->number()));
+
+        freeTasks(completedTasks);
+    }
+
+    std::vector<IExecutorTask*> LocalBackend::createIncrementalLoadAndTransformTasks(TransformStage *tstage, const ContextOptions& options, const std::shared_ptr<TransformStage::JITSymbols>& syms) {
+        using namespace std;
+        vector<IExecutorTask*> tasks;
+        assert(tstage);
+        assert(syms);
+
+        auto cacheEntry = tstage->cacheEntry();
+        assert(cacheEntry);
+        auto cachedOutputPartitions = cacheEntry->outputPartitions();
+        auto cachedExceptionPartitions = cacheEntry->exceptionPartitions();
+        auto cachedExceptionsMap = cacheEntry->exceptionsMap();
+
+        auto stageID = tstage->getID();
+        auto contextID = tstage->context().id();
+        auto operatorIDsWithResolvers = tstage->operatorIDsWithResolvers();
+        auto normalCaseInputSchema = tstage->normalCaseInputSchema();
+        auto outputSchema = tstage->outputSchema();
+        auto normalCaseOutputSchema = tstage->normalCaseOutputSchema();
+        auto mergeExceptionsInOrder = options.OPT_MERGE_EXCEPTIONS_INORDER();
+        auto autoUpcastNumbers = options.AUTO_UPCAST_NUMBERS();
+        auto outputFormat = tstage->outputFormat();
+        auto csvOutputDelimiter = tstage->csvOutputDelimiter();
+        auto csvOutputQuotechar = tstage->csvOutputQuotechar();
+        auto resolveFunctor = options.RESOLVE_WITH_INTERPRETER_ONLY() ? nullptr : syms->resolveFunctor;
+
+        // compile & prep python pipeline for this stage
+        Timer timer;
+        auto pipObject = preparePythonPipeline(tstage->purePythonCode(), tstage->pythonPipelineName());
+        if(!pipObject) {
+            logger().error("python pipeline invalid, details: \n" + core::withLineNumbers(tstage->purePythonCode()));
+            return tasks;
+        }
+        logger().info("compiled pure python pipeline in " + std::to_string(timer.time()) + "s");
+        timer.reset();
+
+        for (const auto & p : cachedOutputPartitions) {
+            auto exceptionInfo = cachedExceptionsMap[uuidToString(p->uuid())];
+
+            tasks.push_back(new IncrementalResolveTask(
+                    stageID,
+                    contextID,
+                    vector<Partition*>{p},
+                    cachedExceptionPartitions,
+                    exceptionInfo,
+                    vector<Partition*>{}, // TODO: General case support
+                    ExceptionInfo(), // TODO: General case support
+                    operatorIDsWithResolvers,
+                    normalCaseInputSchema,
+                    outputSchema,
+                    normalCaseOutputSchema,
+                    outputSchema,
+                    mergeExceptionsInOrder,
+                    autoUpcastNumbers,
+                    outputFormat,
+                    csvOutputDelimiter,
+                    csvOutputQuotechar,
+                    resolveFunctor,
+                    pipObject));
+        }
+
+        return tasks;
+    }
+
+    void LocalBackend::executeTransformStage(tuplex::TransformStage *tstage) {
         Timer stageTimer;
         Timer timer; // for detailed measurements.
 
@@ -856,7 +1098,7 @@ namespace tuplex {
         // special case: skip stage, i.e. empty code and mem2mem
         if(tstage->code().empty() &&  !tstage->fileInputMode() && !tstage->fileOutputMode()) {
             auto pyObjects = inputExceptionsToPythonObjects(tstage->inputExceptions(), tstage->normalCaseInputSchema());
-            tstage->setMemoryResult(tstage->inputPartitions(), std::vector<Partition*>{}, std::unordered_map<std::string, ExceptionInfo>(), pyObjects);
+            tstage->setMemoryResult(tstage->inputPartitions(), pyObjects);
             pyObjects.clear();
             // skip stage
             Logger::instance().defaultLogger().info("[Transform Stage] skipped stage " + std::to_string(tstage->number()) + " because there is nothing todo here.");
@@ -1022,14 +1264,6 @@ namespace tuplex {
             Logger::instance().defaultLogger().info(msg);
             ss.str("");
 
-            // resolution
-            // => for optimization purposes we might want to keep cases separate (cache operator)
-            //    whereas for other purposes (hashing) we need to combine cases together
-            if(tstage->persistSeparateCases()) {
-                // deactivate merging in order
-                merge_except_rows = false;
-            }
-
             // should slow path get executed
             executeSlowPath = syms->resolveFunctor || !tstage->purePythonCode().empty();
 
@@ -1127,6 +1361,7 @@ namespace tuplex {
                 vector<Partition *> generalOutput;
                 unordered_map<string, ExceptionInfo> partitionToExceptionsMap;
                 vector<Partition*> remainingExceptions;
+                unordered_map<string, ExceptionInfo> exceptionsMap;
                 vector<tuple<size_t, PyObject*>> nonConformingRows; // rows where the output type does not fit,
                                                                      // need to manually merged.
                 unordered_map<tuple<int64_t, ExceptionCode>, size_t> ecounts;
@@ -1156,7 +1391,8 @@ namespace tuplex {
                     if(task->type() == TaskType::RESOLVE)
                         task_name = "resolve";
 
-                    setExceptionInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap);
+                    setGeneralCaseInfo(taskOutput, taskGeneralOutput, partitionToExceptionsMap, generalOutput.size());
+                    setExceptionInfo(taskOutput, taskRemainingExceptions, exceptionsMap, remainingExceptions.size());
                     std::copy(taskOutput.begin(), taskOutput.end(), std::back_inserter(output));
                     std::copy(taskRemainingExceptions.begin(), taskRemainingExceptions.end(), std::back_inserter(remainingExceptions));
                     std::copy(taskGeneralOutput.begin(), taskGeneralOutput.end(), std::back_inserter(generalOutput));
@@ -1170,7 +1406,7 @@ namespace tuplex {
                     rowDelta += taskNonConformingRows.size();
                 }
 
-                tstage->setMemoryResult(output, generalOutput, partitionToExceptionsMap, nonConformingRows, remainingExceptions, ecounts);
+                tstage->setMemoryResult(output, nonConformingRows, remainingExceptions, exceptionsMap, generalOutput, partitionToExceptionsMap, ecounts);
                 break;
             }
             case EndPointMode::HASHTABLE: {
@@ -1400,6 +1636,9 @@ namespace tuplex {
 
                 assert(tt->getStageID() == stageID);
 
+                // On first execution, taks hold their own runtime exceptions so they can iterate over all partitions fully
+                auto runtimeExceptionInfo = ExceptionInfo(tt->getNumExceptions(), 0, 0, 0);
+
                 // this task needs to be resolved, b.c. exceptions occurred...
                 // pretty simple, just create a ResolveTask
                 auto exceptionInputSchema = tt->inputSchema(); // this could be specialized!
@@ -1407,6 +1646,7 @@ namespace tuplex {
                                              tstage->context().id(),
                                              tt->getOutputPartitions(),
                                              tt->getExceptionPartitions(),
+                                             runtimeExceptionInfo,
                                              tt->inputExceptions(),
                                              tt->inputExceptionInfo(),
                                              opsToCheck,
@@ -1497,6 +1737,8 @@ namespace tuplex {
         auto resolvedTasks = performTasks(resolveTasks);
         // cout<<"*** git "<<resolvedTasks.size()<<" resolve tasks ***"<<endl;
         std::copy(resolvedTasks.cbegin(), resolvedTasks.cend(), std::back_inserter(tasks_result));
+
+        // TODO: Invalidate runtime exception partitions
 
         // Invalidate partitions after all resolve tasks execute because shared among tasks
         for (auto& p : tstage->inputExceptions()) {

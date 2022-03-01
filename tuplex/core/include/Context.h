@@ -27,6 +27,7 @@
 #include <graphviz/GraphVizBuilder.h>
 #include <ee/IBackend.h>
 #include "JobMetrics.h"
+#include <IncrementalCache.h>
 
 
 namespace tuplex {
@@ -38,6 +39,7 @@ namespace tuplex {
     class Partition;
     class IBackend;
     class ExceptionInfo;
+    class IncrementalCache;
 
     class Context {
     private:
@@ -92,6 +94,8 @@ namespace tuplex {
         std::string _name;
 
         std::shared_ptr<JobMetrics> _lastJobMetrics;
+
+        std::shared_ptr<IncrementalCache> _incrementalCache;
 
         codegen::CompilePolicy _compilePolicy;
         codegen::CompilePolicy compilePolicyFromOptions(const ContextOptions& options);
@@ -262,6 +266,14 @@ namespace tuplex {
          */
         std::shared_ptr<JobMetrics> getMetrics() {
             return _lastJobMetrics;
+        }
+
+        /*!
+         * gets an IncrementalCache object
+         * @return ptr to IncrementalCache object
+         */
+        std::shared_ptr<IncrementalCache> getIncrementalCache() const {
+            return _incrementalCache;
         }
 
         /*!

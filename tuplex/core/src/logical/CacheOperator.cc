@@ -82,11 +82,11 @@ namespace tuplex {
         // => these can be stored separately for faster processing!
         // @TODO: right now, everything just gets cached...
 
-        _generalCasePartitions = rs->exceptions();
+        _generalCasePartitions = rs->generalCasePartitions();
         for(auto p : _generalCasePartitions)
             p->makeImmortal();
-
-        _partitionToExceptionsMap = rs->partitionToExceptionsMap();
+        _partitionToExceptionsMap = rs->generalCaseMap();
+        updateGeneralCase(rs->exceptionPartitions(), rs->exceptionMap());
 
         // check whether partitions have different schema than the currently set one
         // => i.e. they have been specialized.
@@ -152,5 +152,92 @@ namespace tuplex {
             totalCachedRows += p->getNumRows();
         }
         return totalCachedRows;
+    }
+
+    void CacheOperator::updateGeneralCase(const std::vector<Partition*>& exceptionPartitions, const std::unordered_map<std::string, ExceptionInfo>& exceptionMap) {
+        // if either are empty no updating necesary
+        if (_generalCasePartitions.empty() || exceptionPartitions.empty()) {
+            return;
+        }
+
+        // iterate over output partitions to update general case row inds
+        for (const auto& partition : _normalCasePartitions) {
+            auto generalInfo = _partitionToExceptionsMap.find(uuidToString(partition->uuid()))->second;
+            auto generalInd = generalInfo.exceptionIndex;
+            auto generalNumExps = generalInfo.numExceptions;
+            auto generalNumRowsLeft = _generalCasePartitions[generalInd]->getNumRows() - generalInfo.exceptionRowOffset;
+            auto generalPtr = _generalCasePartitions[generalInd]->lockWrite() + generalInfo.exceptionByteOffset;
+
+            auto expInfo = exceptionMap.find(uuidToString(partition->uuid()))->second;
+            auto expInd = expInfo.exceptionIndex;
+            auto expNumExps = expInfo.numExceptions;
+            auto expNumRowsLeft = exceptionPartitions[expInd]->getNumRows() - expInfo.exceptionRowOffset;
+            auto expPtr = exceptionPartitions[expInd]->lock() + expInfo.exceptionByteOffset;
+
+            auto numExpsProcessed = 0;
+            auto numGeneralProcessed = 0;
+            while (numExpsProcessed < expNumExps && numGeneralProcessed < generalNumExps) {
+                auto generalRowInd = *((int64_t*)generalPtr);
+
+                // Iterate over exceptions until row ind is larger than current general row ind
+                while (numExpsProcessed < expNumExps && *((int64_t*) expPtr) < generalRowInd) {
+                    expPtr += ((int64_t*)expPtr)[3] + sizeof(int64_t)*4;
+                    numExpsProcessed += 1;
+                    expNumRowsLeft -= 1;
+
+                    // Change partitions if exhausted current one
+                    if (expNumRowsLeft == 0) {
+                        exceptionPartitions[expInd]->unlock();
+                        expInd++;
+                        if (expInd < exceptionPartitions.size()) {
+                            expNumRowsLeft = exceptionPartitions[expInd]->getNumRows();
+                            expPtr = exceptionPartitions[expInd]->lock();
+                        }
+                    }
+                }
+
+                // Decrement general row ind by number of exceptions that occured before it and iterate to next one
+                *((int64_t*)generalPtr) -= numExpsProcessed;
+                generalPtr += ((int64_t*)generalPtr)[3] + sizeof(int64_t)*4;
+                numGeneralProcessed++;
+                generalNumRowsLeft--;
+
+                // Change partitions if exhausted current one
+                if (generalNumRowsLeft == 0) {
+                    _generalCasePartitions[generalInd]->unlockWrite();
+                    generalInd++;
+                    if (generalInd < _generalCasePartitions.size()) {
+                        generalNumRowsLeft = _generalCasePartitions[generalInd]->getNumRows();
+                        generalPtr = _generalCasePartitions[generalInd]->lockWrite();
+                    }
+                }
+            }
+
+            if (exceptionPartitions[expInd]->isLocked()) {
+                exceptionPartitions[expInd]->unlock();
+            }
+
+            // Iterate over remaining general case partitions if any exist
+            while (numGeneralProcessed < generalNumExps) {
+                *((int64_t*)generalPtr) -= numExpsProcessed;
+                generalPtr += ((int64_t*)generalPtr)[3] + sizeof(int64_t)*4;
+                numGeneralProcessed++;
+                generalNumRowsLeft--;
+
+                // Change partitions if necessary
+                if (generalNumRowsLeft == 0) {
+                    _generalCasePartitions[generalInd]->unlockWrite();
+                    generalInd++;
+                    if (generalInd < _generalCasePartitions.size()) {
+                        generalNumRowsLeft = _generalCasePartitions[generalInd]->getNumRows();
+                        generalPtr = _generalCasePartitions[generalInd]->lockWrite();
+                    }
+                }
+            }
+
+            if (_generalCasePartitions[generalInd]->isLocked()) {
+                _generalCasePartitions[generalInd]->unlockWrite();
+            }
+        }
     }
 }

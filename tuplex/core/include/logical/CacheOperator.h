@@ -122,6 +122,12 @@ namespace tuplex {
         size_t _normalCaseRowCount;
         size_t _generalCaseRowCount;
 
+        /*!
+         * General case partitions have row inds that account for exceptions that occured within the pipeline. However,
+         * those exceptions will not be resolved by uncaching the pipeline and thus must be ignored.
+         */
+        void updateGeneralCase(const std::vector<Partition*>& exceptionPartitions, const std::unordered_map<std::string, ExceptionInfo>& exceptionMap);
+
         // @TODO: there should be 3 things stored
         // 1.) common case => i.e.
         // 2.) general case => i.e. what in general can be done (null-values & Co, wide integers, ...)

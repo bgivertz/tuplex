@@ -21,6 +21,7 @@
 #include <numeric>
 #include <physical/TransformTask.h>
 #include <physical/ResolveTask.h>
+#include <physical/IncrementalResolveTask.h>
 
 namespace tuplex {
 
@@ -69,6 +70,16 @@ namespace tuplex {
         std::vector<IExecutorTask*> createLoadAndTransformToMemoryTasks(TransformStage* tstage, const ContextOptions& options, const std::shared_ptr<TransformStage::JITSymbols>& syms);
         void executeTransformStage(TransformStage* tstage);
 
+        /*!
+         * execute transform stage using the incremental resolution process
+         */
+        void executeIncrementalStage(TransformStage* tstage);
+
+        /*!
+         * create executor tasks for incrmeental resolution
+         * @return vector of tasks
+         */
+        std::vector<IExecutorTask*> createIncrementalLoadAndTransformTasks(TransformStage *tstage, const ContextOptions& options, const std::shared_ptr<TransformStage::JITSymbols>& syms);
 
         /*!
          * Create the final hashmap from all of the input [tasks] (e.g. either merge them (join) or combine them (aggregate)
