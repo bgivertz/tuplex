@@ -299,8 +299,7 @@ namespace tuplex {
     int WorkerApp::processTransformStageInIncrementalMode(const TransformStage* tstage, const std::shared_ptr<TransformStage::JITSymbols>& syms, const URI& outputURI) {
         Timer timer;
 
-//        auto fileURI = URI("s3://tuplex-test/incremental-cache/metadata");
-        auto fileURI = URI("/tmp/incremental-cache/metadata");
+        auto fileURI = URI("s3://tuplex-test/incremental-cache/metadata");
         auto mode = VirtualFileMode::VFS_READ;
         auto file = VirtualFileSystem::open_file(fileURI, mode);
         size_t numCachedFiles = 0;
@@ -591,7 +590,7 @@ namespace tuplex {
     }
 
     void WorkerApp::cacheExceptionFiles(const std::vector<SpillInfo>& spillInfo) {
-        auto fileURI = URI("/tmp/incremental-cache/metadata");
+        auto fileURI = URI("s3://tuplex-test/incremental-cache/metadata");
         auto mode = VirtualFileMode::VFS_OVERWRITE | VirtualFileMode::VFS_WRITE;
         auto file = VirtualFileSystem::open_file(fileURI, mode);
         size_t numFiles = spillInfo.size();
@@ -623,7 +622,7 @@ namespace tuplex {
             }
 
             WriteInfo info;
-            for(auto spill_info : env.spillFiles) {
+            for(const auto& spill_info : env.spillFiles) {
                 if(!spill_info.isExceptionBuf) {
                     info.partNo = info.partNo;
                     info.use_buf = false;
