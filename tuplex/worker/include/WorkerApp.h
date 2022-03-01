@@ -89,9 +89,11 @@ namespace tuplex {
         bool allowNumericTypeUnification;
         bool useInterpreterOnly;
 
+        bool incrementalResolution;
+
         // use some defaults...
         WorkerSettings() : numThreads(1), normalBufferSize(WORKER_DEFAULT_BUFFER_SIZE),
-        exceptionBufferSize(WORKER_EXCEPTION_BUFFER_SIZE), hashBufferSize(WORKER_HASH_BUFFER_SIZE), useInterpreterOnly(false) {
+        exceptionBufferSize(WORKER_EXCEPTION_BUFFER_SIZE), hashBufferSize(WORKER_HASH_BUFFER_SIZE), useInterpreterOnly(false), incrementalResolution(false) {
 
             // set some options from defaults...
             auto opt = ContextOptions::defaults();
@@ -120,6 +122,8 @@ namespace tuplex {
             if(allowNumericTypeUnification != other.allowNumericTypeUnification)
                 return false;
             if(useInterpreterOnly != other.useInterpreterOnly)
+                return false;
+            if(incrementalResolution != other.incrementalResolution)
                 return false;
             return true;
         }
@@ -173,6 +177,10 @@ namespace tuplex {
         int processTransformStageInPythonMode(const TransformStage* tstage,
                                               const std::vector<FilePart>& input_parts,
                                               const URI& output_uri);
+
+        int processTransformStageInIncrementalMode(const TransformStage* tstage,
+                                                   const std::shared_ptr<TransformStage::JITSymbols>& syms,
+                                                   const URI& outputURI);
 
         tuplex::messages::InvocationResponse executeTransformTask(const TransformStage* tstage);
 
@@ -254,7 +262,11 @@ namespace tuplex {
                                       const TransformStage* tstage, PyObject* pipelineObject,
                                       bool acquireGIL);
 
-        int64_t writeAllPartsToOutput(const URI& output_uri, const FileFormat& output_format, const std::unordered_map<std::string, std::string>& output_options);
+        int64_t writeAllPartsToOutput(const URI& output_uri, const FileFormat& output_format, const std::unordered_map<std::string, std::string>& output_options, const bool appendToExistingFile=false);
+
+        int64_t cacheExceptions();
+
+        void cacheExceptionFiles(const std::vector<SpillInfo>& spillInfo);
 
         // this function needs to have the same signature as codegen::cell_rows_f
         // it internally calls the processCellsInPython function.
@@ -313,7 +325,8 @@ namespace tuplex {
         void writePartsToFile(const URI& outputURI,
                               const FileFormat& fmt,
                               const std::vector<WriteInfo>& parts,
-                              const std::unordered_map<std::string, std::string>& outOptions);
+                              const std::unordered_map<std::string, std::string>& outOptions,
+                              const bool appendToExistingFile=false);
 
         URI getNextOutputURI(int threadNo, const URI& baseURI, bool isBaseURIFolder, const std::string& extension);
 

@@ -230,6 +230,11 @@ namespace tuplex {
         if(!syms)
             return WORKER_ERROR_COMPILATION_FAILED;
 
+        if (req.settings().has_incrementalresolution() && req.settings().incrementalresolution()) {
+            logger().info("WorkerApp is processing with incremental resolution.");
+            return processTransformStageInIncrementalMode(tstage, syms, outputURI);
+        }
+
         return processTransformStage(tstage, syms, parts, outputURI);
     }
 
@@ -287,6 +292,99 @@ namespace tuplex {
         auto rc = writeAllPartsToOutput(output_uri, tstage->outputFormat(), tstage->outputOptions());
         if(rc != WORKER_OK)
             return rc;
+        return WORKER_OK;
+    }
+
+
+    int WorkerApp::processTransformStageInIncrementalMode(const TransformStage* tstage, const std::shared_ptr<TransformStage::JITSymbols>& syms, const URI& outputURI) {
+        Timer timer;
+
+//        auto fileURI = URI("s3://tuplex-test/incremental-cache/metadata");
+        auto fileURI = URI("/tmp/incremental-cache/metadata");
+        auto mode = VirtualFileMode::VFS_READ;
+        auto file = VirtualFileSystem::open_file(fileURI, mode);
+        size_t numCachedFiles = 0;
+        file->read(&numCachedFiles, sizeof(size_t));
+        std::vector<SpillInfo> spillFileInfo;
+        spillFileInfo.reserve(numCachedFiles);
+        std::vector<size_t> numExceptionsInFile;
+        numExceptionsInFile.reserve(numCachedFiles);
+
+        size_t totalExceptions = 0;
+        for (int i = 0; i < numCachedFiles; ++i) {
+            size_t pathLen = 0;
+            file->read(&pathLen, sizeof(size_t));
+            char buf[4000];
+            file->read(buf, pathLen);
+
+            std::string path(buf, pathLen);
+            auto spillFile = VirtualFileSystem::open_file(URI(path), mode);
+            size_t numRows = 0;
+            size_t numBytes = 0;
+            spillFile->read(&numRows, sizeof(size_t));
+            spillFile->read(&numBytes, sizeof(size_t));
+            spillFile->close();
+
+            SpillInfo info;
+            info.path = path;
+            info.num_rows = numRows;
+            info.file_size = 2 * sizeof(size_t) + numBytes;
+            info.isExceptionBuf = true;
+            info.originalPartNo = 0;
+
+            spillFileInfo.push_back(info);
+            numExceptionsInFile.push_back(numRows);
+            totalExceptions += numRows;
+        }
+
+        auto filesPerThread = spillFileInfo.size() / _numThreads;
+        auto counter = 0;
+        for (int i = 0; i < _numThreads; ++i) {
+            auto& env = _threadEnvs[i];
+            for (int j = 0; j < filesPerThread; ++j) {
+                env.spillFiles.push_back(spillFileInfo[counter]);
+                env.numExceptionRows += numExceptionsInFile[counter];
+                counter++;
+            }
+        }
+
+        auto threadInd = 0;
+        while (counter < spillFileInfo.size()) {
+            auto & env = _threadEnvs[threadInd];
+            env.spillFiles.push_back(spillFileInfo[counter]);
+            env.numExceptionRows += numExceptionsInFile[counter];
+            counter++;
+            threadInd++;
+        }
+        // init stage, abort on error
+        auto rc = initTransformStage(tstage->initData(), syms);
+        if(rc != WORKER_OK)
+            return rc;
+
+        auto numCodes = std::max(1ul, _numThreads);
+        auto processCodes = new int[numCodes];
+        memset(processCodes, WORKER_OK, sizeof(int) * numCodes);
+
+        // for now, everything out of order
+        logger().info("Starting exception resolution/slow path execution with " + std::to_string(totalExceptions) + " row(s).");
+        for(unsigned i = 0; i < _numThreads; ++i) {
+            resolveOutOfOrder(i, tstage, syms);
+        }
+
+        auto totalResolvedRows = 0;
+        for (int i = 0; i < _numThreads; ++i)
+            totalResolvedRows += _threadEnvs[i].numNormalRows;
+        logger().info("Exception resolution/slow path done- resolved (" + std::to_string(totalResolvedRows) + "/" + std::to_string(totalExceptions) + ") exceptions");
+
+        rc = writeAllPartsToOutput(outputURI, tstage->outputFormat(), tstage->outputOptions(), true);
+        if(rc != WORKER_OK)
+            return rc;
+
+        // release stage
+        rc = releaseTransformStage(syms);
+        if(rc != WORKER_OK)
+            return rc;
+
         return WORKER_OK;
     }
 
@@ -492,18 +590,38 @@ namespace tuplex {
         return WORKER_OK;
     }
 
-    int64_t WorkerApp::writeAllPartsToOutput(const URI& output_uri, const FileFormat& output_format, const std::unordered_map<std::string, std::string>& output_options) {
+    void WorkerApp::cacheExceptionFiles(const std::vector<SpillInfo>& spillInfo) {
+        auto fileURI = URI("/tmp/incremental-cache/metadata");
+        auto mode = VirtualFileMode::VFS_OVERWRITE | VirtualFileMode::VFS_WRITE;
+        auto file = VirtualFileSystem::open_file(fileURI, mode);
+        size_t numFiles = spillInfo.size();
+        file->write(&numFiles, sizeof(size_t));
+
+        for (const auto& info : spillInfo) {
+            size_t pathLen = info.path.length();
+            file->write(&pathLen, sizeof(size_t));
+            file->write(info.path.c_str(), pathLen);
+        }
+        file->close();
+    }
+
+    int64_t WorkerApp::writeAllPartsToOutput(const URI& output_uri, const FileFormat& output_format, const std::unordered_map<std::string, std::string>& output_options, const bool appendToExistingFile) {
 
         std::stringstream ss;
         std::vector<WriteInfo> reorganized_normal_parts;
         // @TODO: same for exceptions... => need to correct numbers??
         //  @Ben Givertz will know how to do this...
+        std::vector<SpillInfo> exceptionFiles;
         for(unsigned i = 0; i < _numThreads; ++i) {
             auto& env = _threadEnvs[i];
 
             // first come all the spill parts, then the remaining buffer...
             // add write info...
             // !!! stable sort necessary after this !!!
+            if (env.exceptionBuf.size() > 0) {
+                spillExceptionBuffer(i);
+            }
+
             WriteInfo info;
             for(auto spill_info : env.spillFiles) {
                 if(!spill_info.isExceptionBuf) {
@@ -514,10 +632,11 @@ namespace tuplex {
                     info.num_rows = info.spill_info.num_rows;
                     reorganized_normal_parts.push_back(info);
                 } else {
-                    // @TODO...
-                    // --> these should be saved somewhere separate?
+                    exceptionFiles.push_back(spill_info);
                 }
             }
+
+            cacheExceptionFiles(exceptionFiles);
 
             // now add buffer (if > 0)
             if(env.normalBuf.size() > 0) {
@@ -555,7 +674,7 @@ namespace tuplex {
 
         // no write everything to final output_uri out in order!
         logger().info("Writing data to " + output_uri.toString());
-        writePartsToFile(output_uri, output_format, reorganized_normal_parts, output_options);
+        writePartsToFile(output_uri, output_format, reorganized_normal_parts, output_options, appendToExistingFile);
         logger().info("Data fully materialized");
 
         return WORKER_OK;
@@ -565,7 +684,8 @@ namespace tuplex {
     void WorkerApp::writePartsToFile(const URI &outputURI,
                                      const FileFormat &fmt,
                                      const std::vector<WriteInfo> &parts,
-                                     const std::unordered_map<std::string, std::string>& output_options) {
+                                     const std::unordered_map<std::string, std::string>& output_options,
+                                     const bool appendToExistingFile) {
         logger().info("file output initiated...");
 
         // need to potentially accumulate some info!
@@ -588,9 +708,11 @@ namespace tuplex {
 
         // open file
         auto vfs = VirtualFileSystem::fromURI(outputURI);
-        auto mode = VirtualFileMode::VFS_OVERWRITE | VirtualFileMode::VFS_WRITE;
+        auto mode = VirtualFileMode::VFS_WRITE | VirtualFileMode::VFS_OVERWRITE;
         if(fmt == FileFormat::OUTFMT_CSV || fmt == FileFormat::OUTFMT_TEXT)
             mode |= VirtualFileMode::VFS_TEXTMODE;
+        if (appendToExistingFile)
+            mode = VirtualFileMode::VFS_WRITE | VirtualFileMode::VFS_APPEND;
         auto file = tuplex::VirtualFileSystem::open_file(outputURI, mode);
         if(!file)
             throw std::runtime_error("could not open " + outputURI.toPath() + " to write output");
@@ -610,7 +732,7 @@ namespace tuplex {
 
             // write header if desired...
             bool writeHeader = stringToBool(get_or(output_options, "header", "false"));
-            if(writeHeader) {
+            if(!appendToExistingFile && writeHeader) {
                 // fetch special var csvHeader
                 auto headerLine = output_options.at("csvHeader");
                 header_length = headerLine.length();
@@ -1620,8 +1742,21 @@ namespace tuplex {
         }
 
         // same story with exception spill files. Load them first to the temp buffer, and then resolve...
-        for(auto info : exceptFiles) {
-
+        for(const auto& info : exceptFiles) {
+            auto file = VirtualFileSystem::open_file(info.path, VirtualFileMode::VFS_READ);
+            Buffer expBuf(100);
+            expBuf.provideSpace(info.file_size);
+            size_t numRows = 0;
+            size_t numBytes = 0;
+            file->read(&numRows, sizeof(size_t));
+            file->read(&numBytes, sizeof(size_t));
+            file->read(expBuf.ptr(), numBytes);
+            expBuf.movePtr(numBytes);
+            if (expBuf.size() > 0) {
+                rc = resolveBuffer(threadNo, expBuf, numRows, stage, syms);
+                if (rc != WORKER_OK)
+                    return rc;
+            }
         }
 
         return WORKER_OK;

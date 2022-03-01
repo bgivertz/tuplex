@@ -196,6 +196,8 @@ namespace tuplex {
         std::string mode = "";
         if(_mode & VFS_READ)
             mode = "rb";
+        else if(_mode & VFS_APPEND && _mode & VFS_WRITE)
+            mode = "ab";
         else if(_mode & VFS_WRITE || _mode & VFS_OVERWRITE) {
             mode = "wb";
 //            if(_mode & VFS_OVERWRITE)
@@ -203,8 +205,6 @@ namespace tuplex {
 //            else
 //                mode = "rb+"; // @Todo: doesn;t work for /tmp?
         }
-        else if(_mode & VFS_APPEND && _mode & VFS_WRITE)
-            mode = "ab";
         else if(_mode & VFS_APPEND && _mode & VFS_READ && _mode && VFS_WRITE)
             mode = "a+";
         else {

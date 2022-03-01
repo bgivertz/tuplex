@@ -82,7 +82,7 @@ std::string runCommand(const std::string& cmd) {
 }
 namespace tuplex {
     std::string transformStageToReqMessage(const TransformStage* tstage, const std::string& inputURI, const size_t& inputSize, const std::string& output_uri, bool interpreterOnly,
-                                           size_t numThreads = 1, const std::string& spillURI="spill_folder") {
+                                           size_t numThreads = 1, const std::string& spillURI="spill_folder", bool incrementalResolution=false) {
         messages::InvocationRequest req;
 
         size_t buf_spill_size = 512 * 1024; // for testing, set spill size to 512KB!
@@ -107,6 +107,7 @@ namespace tuplex {
         ws->set_exceptionbuffersize(buf_spill_size);
         ws->set_spillrooturi(spillURI);
         ws->set_useinterpreteronly(interpreterOnly);
+        ws->set_incrementalresolution(incrementalResolution);
         req.set_allocated_settings(ws.release());
 
         // transfrom to json
@@ -388,7 +389,7 @@ TEST(BasicInvocation, HashOutput) {
     builder.addHashTableOutput(mapop->getOutputSchema(), true, false, {0}, key_type, bucket_type);
 
 
-#error "given pipeline is with i64 keys. -> issue. want to specialize stuff properly!"
+//#error "given pipeline is with i64 keys. -> issue. want to specialize stuff properly!"
 
     auto tstage = builder.build();
 
@@ -413,6 +414,362 @@ TEST(BasicInvocation, HashOutput) {
     auto app = make_unique<WorkerApp>(WorkerSettings());
     app->processJSONMessage(json_message);
     app->shutdown();
+}
+
+std::string resolvePipeline(bool incrementalResolution) {
+    using namespace tuplex;
+    using namespace std;
+
+    auto numThreads = 4;
+    auto scratchURI = URI("/tmp/lambdazillow/");
+//    auto scratchURI = URI(std::string("s3://") + S3_TEST_BUCKET + "/scratch/spill_folder/");
+    auto co = ContextOptions::defaults();
+    co.set("tuplex.optimizer.nullValueOptimization", "false");
+
+    python::initInterpreter();
+    python::unlockGIL();
+
+    auto inputURI = URI("ResolveDebug.csv");
+    auto outputURI = URI("ResolveDebugOutput");
+
+    stringstream ss;
+    ss << "1\n";
+    ss << "0\n";
+    ss << "3\n";
+    stringToFile(inputURI.toPath(), ss.str());
+
+    codegen::StageBuilder builder(0, true, false, false, 0.9, false, false, false);
+    auto csvop = FileInputOperator::fromCsv(inputURI.toPath(), co,option<bool>(true), option<char>(','), option<char>('"'), {""}, {}, {}, {});
+    csvop->setID(1);
+    auto mapop = new MapOperator(csvop, UDF("lambda x: 1 // x if x == 0 else x"), csvop->columns());
+    auto resop = new ResolveOperator(mapop, ExceptionCode::ZERODIVISIONERROR, UDF("lambda x: -1"), mapop->columns());
+    LogicalOperator *curPar = mapop;
+    if (incrementalResolution)
+        curPar = resop;
+    auto fop = new FileOutputOperator(curPar, outputURI, UDF(""), "csv", FileFormat::OUTFMT_CSV, defaultCSVOutputOptions());
+
+    builder.addFileInput(csvop);
+    builder.addOperator(mapop);
+    if (incrementalResolution)
+        builder.addOperator(resop);
+    builder.addFileOutput(fop);
+
+    auto tstage = builder.build();
+
+    // transform to message
+    auto vfs = VirtualFileSystem::fromURI(inputURI);
+    uint64_t inputFileSize = 0;
+    vfs.file_size(inputURI, inputFileSize);
+    auto jsonMessage = transformStageToReqMessage(tstage, inputURI.toPath(), inputFileSize, outputURI.toPath(), false, numThreads, scratchURI.toPath(), incrementalResolution);
+
+    python::lockGIL();
+    python::closeInterpreter();
+
+    return jsonMessage;
+}
+
+std::string zillowPipeline(const tuplex::URI& inputURI, const tuplex::URI& outputURI, int step, bool incrementalResolution) {
+    using namespace tuplex;
+
+    auto extractBd = "def extractBd(x):\n"
+                     "    val = x['facts and features']\n"
+                     "    max_idx = val.find(' bd')\n"
+                     "    if max_idx < 0:\n"
+                     "        max_idx = len(val)\n"
+                     "    s = val[:max_idx]\n"
+                     "\n"
+                     "    # find comma before\n"
+                     "    split_idx = s.rfind(',')\n"
+                     "    if split_idx < 0:\n"
+                     "        split_idx = 0\n"
+                     "    else:\n"
+                     "        split_idx += 2\n"
+                     "    r = s[split_idx:]\n"
+                     "    return int(r)";
+
+    auto extractType = "def extractType(x):\n"
+                       "    t = x['title'].lower()\n"
+                       "    type = 'unknown'\n"
+                       "    if 'condo' in t or 'apartment' in t:\n"
+                       "        type = 'condo'\n"
+                       "    if 'house' in t:\n"
+                       "        type = 'house'\n"
+                       "    return type";
+
+    auto extractBa = "def extractBa(x):\n"
+                     "        val = x['facts and features']\n"
+                     "        max_idx = val.find(' ba')\n"
+                     "        if max_idx < 0:\n"
+                     "            max_idx = len(val)\n"
+                     "        s = val[:max_idx]\n"
+                     "\n"
+                     "        # find comma before\n"
+                     "        split_idx = s.rfind(',')\n"
+                     "        if split_idx < 0:\n"
+                     "            split_idx = 0\n"
+                     "        else:\n"
+                     "            split_idx += 2\n"
+                     "        r = s[split_idx:]\n"
+                     "        ba = (int(2.0 * float(r)) + 1) / 2.0\n"
+                     "        return ba";
+
+    auto extractSqft = "def extractSqft(x):\n"
+                       "        val = x['facts and features']\n"
+                       "        max_idx = val.find(' sqft')\n"
+                       "        if max_idx < 0:\n"
+                       "            max_idx = len(val)\n"
+                       "        s = val[:max_idx]\n"
+                       "\n"
+                       "        split_idx = s.rfind('ba ,')\n"
+                       "        if split_idx < 0:\n"
+                       "            split_idx = 0\n"
+                       "        else:\n"
+                       "            split_idx += 5\n"
+                       "        r = s[split_idx:]\n"
+                       "        r = r.replace(',', '')\n"
+                       "        return int(r)";
+
+    auto extractOffer = "def extractOffer(x):\n"
+                        "        offer = x['title'].lower()\n"
+                        "        if 'sale' in offer:\n"
+                        "            return 'sale'\n"
+                        "        if 'rent' in offer:\n"
+                        "            return 'rent'\n"
+                        "        if 'sold' in offer:\n"
+                        "            return 'sold'\n"
+                        "        if 'foreclose' in offer.lower():\n"
+                        "            return 'foreclosed'\n"
+                        "        return offer";
+
+    auto extractPrice = "def extractPrice(x):\n"
+                        "    price = x['price']\n"
+                        "    p = 0\n"
+                        "    if x['offer'] == 'sold':\n"
+                        "        # price is to be calculated using price/sqft * sqft\n"
+                        "        val = x['facts and features']\n"
+                        "        s = val[val.find('Price/sqft:') + len('Price/sqft:') + 1:]\n"
+                        "        r = s[s.find('$')+1:s.find(', ') - 1]\n"
+                        "        price_per_sqft = int(r)\n"
+                        "        p = price_per_sqft * x['sqft']\n"
+                        "    elif x['offer'] == 'rent':\n"
+                        "        max_idx = price.rfind('/')\n"
+                        "        p = int(price[1:max_idx].replace(',', ''))\n"
+                        "    else:\n"
+                        "        # take price from price column\n"
+                        "        p = int(price[1:].replace(',', ''))\n"
+                        "\n"
+                        "    return p";
+
+    auto resolveBd = "def resolveBd(x):\n"
+                     "    if 'Studio' in x['facts and features']:\n"
+                     "        return 1\n"
+                     "    raise ValueError";
+
+    auto resolveBa = "def resolveBa(x):\n"
+                     "    val = x['facts and features']\n"
+                     "    max_idx = val.find(' ba')\n"
+                     "    if max_idx < 0:\n"
+                     "        max_idx = len(val)\n"
+                     "    s = val[:max_idx]\n"
+                     "\n"
+                     "    # find comma before\n"
+                     "    split_idx = s.rfind(',')\n"
+                     "    if split_idx < 0:\n"
+                     "        split_idx = 0\n"
+                     "    else:\n"
+                     "        split_idx += 2\n"
+                     "    r = s[split_idx:]\n"
+                     "    return int(float(r)) + 1";
+
+    auto numThreads = 4;
+    auto scratchURI = URI("/tmp/lambdazillow/");
+//    auto scratchURI = URI(std::string("s3://") + S3_TEST_BUCKET + "/scratch/spill_folder/");
+    auto co = ContextOptions::defaults();
+    co.set("tuplex.optimizer.nullValueOptimization", "false");
+
+    python::initInterpreter();
+    python::unlockGIL();
+
+    codegen::StageBuilder builder(0, true, true, false, 0.9, true, false, false);
+    auto csvop = FileInputOperator::fromCsv(inputURI.toPath(), co,option<bool>(true), option<char>(','), option<char>('"'), {""}, {}, {}, {});
+    csvop->setID(1);
+    auto withop1 = new WithColumnOperator(csvop, csvop->columns(), "bedrooms", UDF(extractBd));
+    withop1->setID(2);
+    auto resop1 = new ResolveOperator(withop1, ExceptionCode::VALUEERROR, UDF(resolveBd), withop1->columns());
+    resop1->setID(3);
+    LogicalOperator* curPar = withop1;
+    if (step > 0)
+        curPar = resop1;
+    auto ignop1 = new IgnoreOperator(curPar, ExceptionCode::VALUEERROR);
+    ignop1->setID(4);
+    if (step > 1)
+        curPar = ignop1;
+    auto filterop1 = new FilterOperator(curPar, UDF("lambda x: x['bedrooms'] < 10"), curPar->columns());
+    filterop1->setID(5);
+    auto withop2 = new WithColumnOperator(filterop1, filterop1->columns(), "type", UDF(extractType));
+    withop2->setID(6);
+    auto filterop2 = new FilterOperator(withop2, UDF("lambda x: x['type'] == 'condo'"), withop2->columns());
+    filterop2->setID(7);
+    auto withop3 = new WithColumnOperator(filterop2, filterop2->columns(), "zipcode", UDF("lambda x: '%05d' % int(x['postal_code'])"));
+    withop3->setID(8);
+    auto ignop2 = new IgnoreOperator(withop3, ExceptionCode::TYPEERROR);
+    ignop2->setID(9);
+    curPar = withop3;
+    if (step > 2)
+        curPar = ignop2;
+    auto mapcolop1 = new MapColumnOperator(curPar, "city", curPar->columns(), UDF("lambda x: x[0].upper() + x[1:].lower()"));
+    mapcolop1->setID(10);
+    auto withop4 = new WithColumnOperator(mapcolop1,  mapcolop1->columns(), "bathrooms", UDF(extractBa));
+    withop4->setID(11);
+    auto resop3 = new ResolveOperator(withop4, ExceptionCode::VALUEERROR, UDF(resolveBa), withop4->columns());
+    resop3->setID(12);
+    curPar = withop4;
+    if (step > 3)
+        curPar = resop3;
+    auto withop5 = new WithColumnOperator(curPar,  curPar->columns(), "sqft", UDF(extractSqft));
+    withop5->setID(13);
+    auto ignop4 = new IgnoreOperator(withop5, ExceptionCode::VALUEERROR);
+    ignop4->setID(14);
+    curPar = withop5;
+    if (step > 4)
+        curPar = ignop4;
+    auto withop6 = new WithColumnOperator(curPar,  curPar->columns(), "offer", UDF(extractOffer));
+    withop6->setID(15);
+    auto withop7 = new WithColumnOperator(withop6, withop6->columns(), "price", UDF(extractPrice));
+    withop7->setID(16);
+    auto resop2 = new ResolveOperator(withop7, ExceptionCode::VALUEERROR, UDF("lambda x: 111111"), withop7->columns());
+    resop2->setID(17);
+    curPar = withop7;
+    if (step > 5)
+        curPar = resop2;
+    auto filterop3 = new FilterOperator(curPar, UDF("lambda x: 100000 < x['price'] < 2e7 and x['offer'] == 'sale'"), curPar->columns());
+    filterop3->setID(18);
+
+    auto fop = new FileOutputOperator(filterop3, outputURI, UDF(""), "csv", FileFormat::OUTFMT_CSV, defaultCSVOutputOptions());
+    fop->setID(19);
+
+    builder.addFileInput(csvop);
+    builder.addOperator(withop1);
+    if (step > 0)
+        builder.addOperator(resop1);
+    if (step > 1)
+        builder.addOperator(ignop1);
+    builder.addOperator(filterop1);
+    builder.addOperator(withop2);
+    builder.addOperator(filterop2);
+    builder.addOperator(withop3);
+    if (step > 2)
+        builder.addOperator(ignop2);
+    builder.addOperator(mapcolop1);
+    builder.addOperator(withop4);
+    if (step > 3)
+        builder.addOperator(resop3);
+    builder.addOperator(withop5);
+    if (step > 4)
+        builder.addOperator(ignop4);
+    builder.addOperator(withop6);
+    builder.addOperator(withop7);
+    if (step > 5)
+        builder.addOperator(resop2);
+    builder.addOperator(filterop3);
+    builder.addFileOutput(fop);
+
+    auto tstage = builder.build();
+
+    // transform to message
+    auto vfs = VirtualFileSystem::fromURI(inputURI);
+    uint64_t inputFileSize = 0;
+    vfs.file_size(inputURI, inputFileSize);
+    auto jsonMessage = transformStageToReqMessage(tstage, inputURI.toPath(), inputFileSize, outputURI.toPath(), false, numThreads, scratchURI.toPath(), incrementalResolution);
+
+    python::lockGIL();
+    python::closeInterpreter();
+
+    return jsonMessage;
+}
+
+TEST(BasicInvocation, Debug) {
+    using namespace std;
+    using namespace tuplex;
+
+#ifdef BUILD_WITH_AWS
+    {
+        // init AWS SDK to get access to S3 filesystem
+        auto& logger = Logger::instance().logger("aws");
+        auto aws_credentials = AWSCredentials::get();
+        auto options = ContextOptions::defaults();
+        Timer timer;
+        bool aws_init_rc = initAWS(aws_credentials, options.AWS_NETWORK_SETTINGS(), options.AWS_REQUESTER_PAY());
+        logger.debug("initialized AWS SDK in " + std::to_string(timer.time()) + "s");
+    }
+#endif
+    {
+        auto jsonMessage = resolvePipeline(false);
+        // start worker within same process to easier debug...
+        auto app = make_unique<WorkerApp>(WorkerSettings());
+        app->processJSONMessage(jsonMessage);
+        app->shutdown();
+    }
+#ifdef BUILD_WITH_AWS
+        // reinit SDK, b.c. app shutdown also closes AWS SDK.
+        initAWS();
+#endif
+
+    {
+        auto jsonMessage = resolvePipeline(true);
+        // start worker within same process to easier debug...
+        auto app = make_unique<WorkerApp>(WorkerSettings());
+        app->processJSONMessage(jsonMessage);
+        app->shutdown();
+    }
+}
+
+TEST(BasicInvocation, IncrementalWorker) {
+    using namespace std;
+    using namespace tuplex;
+
+#ifdef BUILD_WITH_AWS
+    {
+        // init AWS SDK to get access to S3 filesystem
+        auto& logger = Logger::instance().logger("aws");
+        auto aws_credentials = AWSCredentials::get();
+        auto options = ContextOptions::defaults();
+        Timer timer;
+        bool aws_init_rc = initAWS(aws_credentials, options.AWS_NETWORK_SETTINGS(), options.AWS_REQUESTER_PAY());
+        logger.debug("initialized AWS SDK in " + std::to_string(timer.time()) + "s");
+    }
+#endif
+
+    auto testName = std::string(::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()) + std::string(::testing::UnitTest::GetInstance()->current_test_info()->name());
+    auto inputURI = URI("../resources/zillow_dirty.csv");
+    auto incrementalOutputURI = URI(testName + "/incremental");
+    auto plainOutputURI = URI(testName + "/plain");
+//    auto inputURI = URI("s3://tuplex-ben/data/zillow_dirty.csv");
+//    auto outputURI = URI(std::string("s3://") + S3_TEST_BUCKET + "/" + testName + "/output");
+
+
+    for (int step = 0; step < 7; ++step) {
+        auto jsonMessage = zillowPipeline(inputURI, incrementalOutputURI, step, step != 0);
+
+        // start worker within same process to easier debug...
+        auto app = make_unique<WorkerApp>(WorkerSettings());
+        app->processJSONMessage(jsonMessage);
+        app->shutdown();
+
+#ifdef BUILD_WITH_AWS
+        // reinit SDK, b.c. app shutdown also closes AWS SDK.
+        initAWS();
+#endif
+    }
+
+    {
+        auto jsonMessage = zillowPipeline(inputURI, plainOutputURI, 6, false);
+
+        // start worker within same process to easier debug...
+        auto app = make_unique<WorkerApp>(WorkerSettings());
+        app->processJSONMessage(jsonMessage);
+        app->shutdown();
+    }
 }
 
 TEST(BasicInvocation, Worker) {
